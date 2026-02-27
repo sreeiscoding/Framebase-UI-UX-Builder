@@ -12,13 +12,13 @@ import { sanitizeWorkspaceHtml } from "@/lib/sanitize";
 
 export async function GET(
   req: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   logRequest(req);
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
-  const { id } = context.params;
   if (!id) {
     return jsonError("Project id is required.", { status: 400 });
   }
@@ -38,13 +38,13 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   logRequest(req);
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
-  const { id } = context.params;
   if (!id) {
     return jsonError("Project id is required.", { status: 400 });
   }

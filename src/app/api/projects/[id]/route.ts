@@ -11,13 +11,13 @@ import { logRequest } from "@/lib/request-log";
 
 export async function DELETE(
   req: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   logRequest(req);
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
-  const { id } = context.params;
   if (!id) {
     return jsonError("Project id is required.", { status: 400 });
   }
@@ -37,13 +37,13 @@ export async function DELETE(
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   logRequest(req);
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
-  const { id } = context.params;
   if (!id) {
     return jsonError("Project id is required.", { status: 400 });
   }
