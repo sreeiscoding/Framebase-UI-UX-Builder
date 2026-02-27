@@ -28,7 +28,6 @@ export default function AuthModal({
   reason,
   initialView,
 }: AuthModalProps) {
-  const isDev = process.env.NODE_ENV !== "production";
   const { showToast } = useToast();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -49,7 +48,6 @@ export default function AuthModal({
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -251,36 +249,6 @@ export default function AuthModal({
       setRecoverNotice("");
     } finally {
       setIsRecovering(false);
-    }
-  };
-
-  const handleConfirmEmail = async () => {
-    if (!loginEmail.trim()) {
-      setErrors(["Enter your email address first."]);
-      return;
-    }
-    try {
-      setIsConfirming(true);
-      const response = await fetch("/api/auth/confirm-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail.trim().toLowerCase() }),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || "Email confirmation failed.");
-      }
-      showToast({
-        message: "Email confirmed. You can log in now.",
-        variant: "success",
-      });
-      setErrors([]);
-    } catch (error) {
-      setErrors([
-        error instanceof Error ? error.message : "Email confirmation failed.",
-      ]);
-    } finally {
-      setIsConfirming(false);
     }
   };
 
@@ -520,17 +488,6 @@ export default function AuthModal({
                 >
                   {isLoggingIn ? "Logging in..." : "Login"}
                 </Button>
-                {isDev ? (
-                  <Button
-                    type="button"
-                    onClick={handleConfirmEmail}
-                    disabled={isConfirming}
-                    variant="unstyled"
-                    className="rounded-full border border-amber-200 px-4 py-2.5 text-xs font-semibold text-amber-700 transition hover:border-amber-300 hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:text-amber-300 dark:hover:border-amber-400/60"
-                  >
-                    {isConfirming ? "Confirming..." : "Confirm email (dev)"}
-                  </Button>
-                ) : null}
                 <Button
                   type="button"
                   onClick={() => {

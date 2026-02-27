@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { jsonError } from "@/lib/auth-middleware";
 import { registerSchema } from "@/lib/validators/auth";
-import { registerUser } from "@/lib/services/auth-service";
 import { logRequest } from "@/lib/request-log";
 import { inngest, inngestEnabled } from "../../../../../inngest/client";
 
@@ -9,12 +9,40 @@ export async function POST(req: NextRequest) {
   logRequest(req);
   try {
     const body = registerSchema.parse(await req.json());
-    const result = await registerUser({
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnon) {
+      return jsonError("Supabase env is missing.", { status: 500 });
+    }
+    const supabase = createClient(supabaseUrl, supabaseAnon, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data, error } = await supabase.auth.signUp({
       email: body.email.trim().toLowerCase(),
       password: body.password,
-      fullName: body.full_name.trim(),
-      emailRedirectTo: process.env.FRONTEND_URL || undefined,
+      options: {
+        ...(process.env.FRONTEND_URL
+          ? { emailRedirectTo: process.env.FRONTEND_URL }
+          : {}),
+        data: {
+          full_name: body.full_name.trim(),
+        },
+      },
     });
+
+    if (error || !data.user) {
+      if (error) {
+        console.error("[auth] signup error:", error.message);
+      }
+      return jsonError(error?.message || "Registration failed.", { status: 400 });
+    }
+
+    const result = {
+      user: data.user,
+      session: data.session,
+      requiresEmailConfirmation: !data.session,
+    };
     if (inngestEnabled) {
       try {
         await inngest.send({
