@@ -30,14 +30,23 @@ export default function Navbar() {
         .select("*")
         .eq("id", user.id)
         .maybeSingle();
+      const metadata = (user.user_metadata || {}) as Record<string, string>;
       const name =
         data?.full_name?.trim() ||
         data?.username?.trim() ||
+        metadata.full_name?.trim() ||
+        metadata.username?.trim() ||
         user.email ||
         "Account";
       setDisplayName(name);
     } catch {
-      setDisplayName(user.email || "Account");
+      const metadata = (user.user_metadata || {}) as Record<string, string>;
+      setDisplayName(
+        metadata.full_name?.trim() ||
+          metadata.username?.trim() ||
+          user.email ||
+          "Account"
+      );
     }
   };
 

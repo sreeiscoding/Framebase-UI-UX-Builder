@@ -253,16 +253,17 @@ export default function WorkspaceModals() {
         .from("profiles")
         .select("*")
         .eq("id", data.user.id)
-        .single();
+        .maybeSingle();
       if (profileError) {
         throw new Error(profileError.message || "Failed to load profile.");
       }
       if (!active) return;
+      const metadata = (data.user.user_metadata || {}) as Record<string, string>;
       const next = {
-        fullName: profile?.full_name ?? "",
-        username: profile?.username ?? "",
+        fullName: profile?.full_name ?? metadata.full_name ?? "",
+        username: profile?.username ?? metadata.username ?? "",
         email: profile?.email ?? data.user.email ?? "",
-        avatarUrl: profile?.avatar_url ?? "",
+        avatarUrl: profile?.avatar_url ?? metadata.avatar_url ?? "",
         platformPreference: profile?.platform_preference ?? "",
       };
       setSettingsProfile(next);

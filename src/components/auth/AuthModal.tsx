@@ -33,6 +33,7 @@ export default function AuthModal({
   const [visible, setVisible] = useState(false);
   const [view, setView] = useState<AuthView>("register");
   const [registerName, setRegisterName] = useState("");
+  const [registerUsername, setRegisterUsername] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerConfirm, setRegisterConfirm] = useState("");
@@ -87,6 +88,7 @@ export default function AuthModal({
     window.setTimeout(() => {
       onClose();
       setRegisterName("");
+      setRegisterUsername("");
       setRegisterEmail("");
       setRegisterPassword("");
       setRegisterConfirm("");
@@ -105,6 +107,7 @@ export default function AuthModal({
   const registerErrors = useMemo(() => {
     const issues: string[] = [];
     if (!registerName.trim()) issues.push("Full name is required.");
+    if (!registerUsername.trim()) issues.push("Username is required.");
     if (!registerEmail.trim()) issues.push("Email is required.");
     if (registerEmail && !isValidEmail(registerEmail)) issues.push("Enter a valid email.");
     if (!registerPassword) issues.push("Password is required.");
@@ -116,7 +119,7 @@ export default function AuthModal({
       issues.push("Passwords do not match.");
     }
     return issues;
-  }, [registerName, registerEmail, registerPassword, registerConfirm]);
+  }, [registerName, registerUsername, registerEmail, registerPassword, registerConfirm]);
 
   const loginErrors = useMemo(() => {
     const issues: string[] = [];
@@ -140,33 +143,25 @@ export default function AuthModal({
     }
     try {
       setIsRegistering(true);
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: registerName.trim(),
-          email: registerEmail.trim().toLowerCase(),
-          password: registerPassword,
-        }),
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.signUp({
+        email: registerEmail.trim().toLowerCase(),
+        password: registerPassword,
+        options: {
+          data: {
+            username: registerUsername.trim(),
+            full_name: registerName.trim(),
+          },
+        },
       });
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        setErrors([payload?.error || "Registration failed."]);
+      if (error) {
+        setErrors([error.message || "Registration failed."]);
         return;
       }
-
-      const { accessToken, refreshToken } = payload.data || {};
-      if (payload?.data?.requiresEmailConfirmation) {
+      if (!data.session) {
         setInfoMessage("Check your email to confirm your account before logging in.");
       } else {
         setInfoMessage("");
-      }
-      if (accessToken && refreshToken) {
-        const supabase = getSupabaseClient();
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
       }
 
       setLoginEmail(registerEmail.trim().toLowerCase());
@@ -187,27 +182,14 @@ export default function AuthModal({
     }
     try {
       setIsLoggingIn(true);
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: loginEmail.trim().toLowerCase(),
-          password: loginPassword,
-        }),
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginEmail.trim().toLowerCase(),
+        password: loginPassword,
       });
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        setErrors([payload?.error || "Invalid credentials."]);
+      if (error) {
+        setErrors([error.message || "Invalid credentials."]);
         return;
-      }
-
-      const { accessToken, refreshToken } = payload.data || {};
-      if (accessToken && refreshToken) {
-        const supabase = getSupabaseClient();
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
       }
 
       showToast({
@@ -334,6 +316,17 @@ export default function AuthModal({
                         onChange={(event) => setRegisterName(event.target.value)}
                         className="mt-2 w-full rounded-2xl border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 dark:focus:ring-indigo-500/30"
                         placeholder="Alex Morgan"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
+                        Username
+                      </label>
+                      <Input
+                        value={registerUsername}
+                        onChange={(event) => setRegisterUsername(event.target.value)}
+                        className="mt-2 w-full rounded-2xl border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 dark:focus:ring-indigo-500/30"
+                        placeholder="alexmorgan"
                       />
                     </div>
                     <div>

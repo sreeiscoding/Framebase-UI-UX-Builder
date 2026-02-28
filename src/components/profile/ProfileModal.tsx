@@ -41,7 +41,6 @@ export default function ProfileModal({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<"profile" | "reset">("profile");
-  const [userId, setUserId] = useState<string | null>(null);
   const [initial, setInitial] = useState({
     fullName: "",
     username: "",
@@ -65,17 +64,17 @@ export default function ProfileModal({
         .from("profiles")
         .select("*")
         .eq("id", data.user.id)
-        .single();
+        .maybeSingle();
       if (profileError) {
         throw new Error(profileError.message || "Failed to load profile.");
       }
       if (!active) return;
-      const nextFullName = profile?.full_name ?? "";
-      const nextUsername = profile?.username ?? "";
-      const nextAvatarUrl = profile?.avatar_url ?? "";
+      const metadata = (data.user.user_metadata || {}) as Record<string, string>;
+      const nextFullName = profile?.full_name ?? metadata.full_name ?? "";
+      const nextUsername = profile?.username ?? metadata.username ?? "";
+      const nextAvatarUrl = profile?.avatar_url ?? metadata.avatar_url ?? "";
       const nextEmail = profile?.email ?? data.user.email ?? "";
       const nextPlatform = profile?.platform_preference ?? "";
-      setUserId(data.user.id);
       setFullName(nextFullName);
       setUsername(nextUsername);
       setAvatarUrl(nextAvatarUrl);
@@ -159,17 +158,24 @@ export default function ProfileModal({
     }
     try {
       setSaving(true);
+      const supabase = getSupabaseClient();
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error("Unable to load your session.");
+      }
       const body: Record<string, string> = {};
       let nextAvatarUrl = avatarUrl.trim();
-      if (avatarFile && userId) {
+      if (avatarFile && authData.user) {
         const fileExt = avatarFile.name.split(".").pop() || "png";
-        const fileName = `${userId}-${Date.now()}.${fileExt}`;
-        const supabase = getSupabaseClient();
+        const fileName = `${authData.user.id}-${Date.now()}.${fileExt}`;
         const upload = await supabase.storage
           .from("avatars")
           .upload(fileName, avatarFile, { upsert: true });
         if (upload.error) {
-          throw new Error(upload.error.message || "Avatar upload failed.");
+          const message =
+            upload.error.message ||
+            "Avatar upload failed. Ensure storage policies allow uploads.";
+          throw new Error(message);
         }
         const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
         nextAvatarUrl = data.publicUrl;
@@ -184,20 +190,23 @@ export default function ProfileModal({
       if (!body.avatar_url && avatarUrl.trim() !== initial.avatarUrl) {
         body.avatar_url = avatarUrl.trim();
       }
-      const response = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || "Profile update failed.");
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: body.full_name ?? fullName.trim(),
+          username: body.username ?? username.trim(),
+          avatar_url: body.avatar_url ?? nextAvatarUrl,
+        })
+        .eq("id", authData.user.id)
+        .select("*")
+        .single();
+      if (error) {
+        throw new Error(error.message || "Profile update failed.");
       }
-      const profile = payload?.data?.profile || {};
       const nextFullName = profile.full_name ?? "";
       const nextUsername = profile.username ?? "";
       const resolvedAvatarUrl = profile.avatar_url ?? nextAvatarUrl ?? "";
-      const nextEmail = profile.email ?? email;
+      const nextEmail = profile.email ?? authData.user.email ?? email;
       setFullName(nextFullName);
       setUsername(nextUsername);
       setAvatarUrl(resolvedAvatarUrl);
