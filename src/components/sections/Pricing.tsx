@@ -6,10 +6,22 @@ import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { pricingPlans } from "@/lib/constants";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { getSupabaseClient } from "@/lib/supabase-client";
+import { useMemo } from "react";
 
 export default function Pricing() {
   const router = useRouter();
-  const { requireAuth } = useAuth();
+  const { openAuthModal } = useAuth();
+  const supabase = useMemo(() => getSupabaseClient(), []);
+
+  const handlePricingCTA = async (planName: string) => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      openAuthModal("Create an account to continue.", "register");
+      return;
+    }
+    router.push(`/billing?plan=${encodeURIComponent(planName)}`);
+  };
 
   return (
     <section id="pricing" className="section bg-gray-50 dark:bg-gray-900">
@@ -58,12 +70,7 @@ export default function Pricing() {
               <div className="mt-8">
                 <button
                   type="button"
-                  onClick={() =>
-                    requireAuth(
-                      () => router.push("/workspace"),
-                      "Create an account to continue."
-                    )
-                  }
+                  onClick={() => handlePricingCTA(plan.name)}
                   className={clsx(
                     "inline-flex w-full items-center justify-center rounded-2xl px-6 py-3 text-sm font-semibold transition duration-200",
                     plan.highlight
@@ -76,6 +83,27 @@ export default function Pricing() {
               </div>
             </div>
           ))}
+        </div>
+        <div className="mt-8 rounded-3xl border border-indigo-200 bg-white/80 p-6 text-center shadow-sm shadow-indigo-500/10 dark:border-indigo-500/30 dark:bg-gray-950">
+          <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+            7-day free trial
+          </span>
+          <h3 className="mt-3 text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Try the full workspace for 7 days
+          </h3>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Explore every feature with no commitment. Cancel anytime before the trial
+            ends.
+          </p>
+          <div className="mt-5 flex justify-center">
+            <button
+              type="button"
+              onClick={() => handlePricingCTA("Free Trial")}
+              className="inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+            >
+              Build with Free Trial
+            </button>
+          </div>
         </div>
       </div>
     </section>
