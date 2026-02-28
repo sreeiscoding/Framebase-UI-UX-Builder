@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import LoadingScreen from "@/components/LoadingScreen";
 import {
   generateLayoutFromPrompt,
   generateLayoutFromSections,
@@ -1312,6 +1313,7 @@ interface WorkspaceUIState {
   caseStudyToast: { message: string; visible: boolean } | null;
   settingsOpen: boolean;
   viewPanelOpen: boolean;
+  platformLockOpen: boolean;
 }
 
 interface WorkspaceContextValue {
@@ -1359,6 +1361,8 @@ interface WorkspaceContextValue {
   closeProjectCode: () => void;
   openSettings: () => void;
   closeSettings: () => void;
+  openPlatformLock: () => void;
+  closePlatformLock: () => void;
   setError: (message: string | null) => void;
 }
 
@@ -1396,6 +1400,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     caseStudyToast: null,
     settingsOpen: false,
     viewPanelOpen: false,
+    platformLockOpen: false,
   });
   const [view, setView] = useState<ViewState>(defaultViewState);
   const [hydrated, setHydrated] = useState(false);
@@ -1680,6 +1685,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const addProject = async (name: string) => {
     const trimmed = name.trim() || "Untitled Project";
+    const basePage: WorkspacePageData = {
+      id: createId(),
+      name: "Untitled Page",
+      projectId: null,
+      prompt: "",
+      elements: [],
+      explanation: "",
+      mvpPrompt: "",
+      jsonOutline: "",
+      canvasX: 2000,
+      canvasY: 2000,
+    };
     if (syncEnabled) {
       const result = await apiFetch<{ project: ApiProject }>("/api/projects", {
         method: "POST",
@@ -1699,10 +1716,25 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         id: result.data.project.id,
         name: result.data.project.name,
       };
+      const pageResult = await apiFetch<{ page: ApiPage }>(
+        `/api/projects/${project.id}/pages`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: basePage.name,
+            metadata: serializePageMetadata({ ...basePage, projectId: project.id }),
+          }),
+        }
+      );
+      const page = pageResult.success
+        ? buildPageFromRecord(pageResult.data.page, state.pages.length)
+        : { ...basePage, projectId: project.id };
       commit({
         ...state,
         projects: [...state.projects, project],
+        pages: [...state.pages, page],
         activeProjectId: project.id,
+        activePageId: page.id,
       });
       setView((prev) =>
         prev.selectedElementId ? { ...prev, selectedElementId: null } : prev
@@ -1713,10 +1745,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       id: createId(),
       name: trimmed,
     };
+    const page = { ...basePage, projectId: project.id };
     commit({
       ...state,
       projects: [...state.projects, project],
+      pages: [...state.pages, page],
       activeProjectId: project.id,
+      activePageId: page.id,
     });
     setView((prev) =>
       prev.selectedElementId ? { ...prev, selectedElementId: null } : prev
@@ -2521,12 +2556,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       })),
     openSettings: () => setUi((prev) => ({ ...prev, settingsOpen: true })),
     closeSettings: () => setUi((prev) => ({ ...prev, settingsOpen: false })),
+    openPlatformLock: () =>
+      setUi((prev) => ({ ...prev, platformLockOpen: true })),
+    closePlatformLock: () =>
+      setUi((prev) => ({ ...prev, platformLockOpen: false })),
     setError: (message: string | null) =>
       setUi((prev) => ({ ...prev, errorMessage: message })),
   }), [state, view, ui, setPlatform, setViewMode, addProject, renameProject, setActiveProject, deleteProject, setZoom, updateZoom, setSelectedElement, addPage, renamePage, duplicatePage, deletePage, setActivePage, updatePage, updatePrompt, runPrompt, updateElement, addElement, removeElement, generateMvpPrompt, generateProjectAnalysis, generateProjectCode, generateCaseStudyPpt, downloadCaseStudyPpt, closeCaseStudyPreview]);
 
   if (!hydrated) {
-    return null;
+    return <LoadingScreen message="Loading your workspace..." />;
   }
 
   return (

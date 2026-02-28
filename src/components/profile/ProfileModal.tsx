@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ToastProvider";
+import { getSupabaseClient } from "@/lib/supabase-client";
 
 type ProfileModalProps = {
   open: boolean;
@@ -18,14 +19,6 @@ type ProfileModalProps = {
 };
 
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-const isValidUrl = (value: string) => {
-  try {
-    new URL(value);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 export default function ProfileModal({
   open,
@@ -39,11 +32,16 @@ export default function ProfileModal({
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
   const [email, setEmail] = useState("");
+  const [platformPreference, setPlatformPreference] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<"profile" | "reset">("profile");
+  const [userId, setUserId] = useState<string | null>(null);
   const [initial, setInitial] = useState({
     fullName: "",
     username: "",
@@ -56,29 +54,42 @@ export default function ProfileModal({
     let active = true;
     setLoading(true);
     setErrors([]);
-    fetch("/api/profile")
-      .then(async (res) => {
-        const payload = await res.json();
-        if (!res.ok || !payload?.success) {
-          throw new Error(payload?.error || "Failed to load profile.");
-        }
-        if (!active) return;
-        const profile = payload?.data?.profile || {};
-        const nextFullName = profile.full_name ?? "";
-        const nextUsername = profile.username ?? "";
-        const nextAvatarUrl = profile.avatar_url ?? "";
-        const nextEmail = profile.email ?? "";
-        setFullName(nextFullName);
-        setUsername(nextUsername);
-        setAvatarUrl(nextAvatarUrl);
-        setEmail(nextEmail);
-        setInitial({
-          fullName: nextFullName,
-          username: nextUsername,
-          avatarUrl: nextAvatarUrl,
-          email: nextEmail,
-        });
-      })
+    setActiveTab("profile");
+    const loadProfile = async () => {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        throw new Error("Unable to load your session.");
+      }
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
+        .single();
+      if (profileError) {
+        throw new Error(profileError.message || "Failed to load profile.");
+      }
+      if (!active) return;
+      const nextFullName = profile?.full_name ?? "";
+      const nextUsername = profile?.username ?? "";
+      const nextAvatarUrl = profile?.avatar_url ?? "";
+      const nextEmail = profile?.email ?? data.user.email ?? "";
+      const nextPlatform = profile?.platform_preference ?? "";
+      setUserId(data.user.id);
+      setFullName(nextFullName);
+      setUsername(nextUsername);
+      setAvatarUrl(nextAvatarUrl);
+      setAvatarPreview(nextAvatarUrl);
+      setEmail(nextEmail);
+      setPlatformPreference(nextPlatform);
+      setInitial({
+        fullName: nextFullName,
+        username: nextUsername,
+        avatarUrl: nextAvatarUrl,
+        email: nextEmail,
+      });
+    };
+    loadProfile()
       .catch((error) => {
         if (!active) return;
         setErrors([error instanceof Error ? error.message : "Failed to load profile."]);
@@ -90,13 +101,21 @@ export default function ProfileModal({
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [avatarFile]);
 
   useEffect(() => {
     if (!open) return;
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+    setAvatarFile(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!avatarFile) return;
+    const previewUrl = URL.createObjectURL(avatarFile);
+    setAvatarPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
   }, [open]);
 
   const passwordErrors = useMemo(() => {
@@ -118,16 +137,14 @@ export default function ProfileModal({
     if (email && !isValidEmail(email)) {
       issues.push("Email address is invalid.");
     }
-    if (avatarUrl && !isValidUrl(avatarUrl)) {
-      issues.push("Profile image URL must be valid.");
-    }
     return issues;
-  }, [email, avatarUrl]);
+  }, [email]);
 
   const hasChanges =
     fullName.trim() !== initial.fullName ||
     username.trim() !== initial.username ||
     avatarUrl.trim() !== initial.avatarUrl ||
+    Boolean(avatarFile) ||
     Boolean(newPassword);
 
   const handleSave = async () => {
@@ -143,18 +160,29 @@ export default function ProfileModal({
     try {
       setSaving(true);
       const body: Record<string, string> = {};
+      let nextAvatarUrl = avatarUrl.trim();
+      if (avatarFile && userId) {
+        const fileExt = avatarFile.name.split(".").pop() || "png";
+        const fileName = `${userId}-${Date.now()}.${fileExt}`;
+        const supabase = getSupabaseClient();
+        const upload = await supabase.storage
+          .from("avatars")
+          .upload(fileName, avatarFile, { upsert: true });
+        if (upload.error) {
+          throw new Error(upload.error.message || "Avatar upload failed.");
+        }
+        const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+        nextAvatarUrl = data.publicUrl;
+        body.avatar_url = nextAvatarUrl;
+      }
       if (fullName.trim() !== initial.fullName) {
         body.full_name = fullName.trim();
       }
       if (username.trim() !== initial.username) {
         body.username = username.trim();
       }
-      if (avatarUrl.trim() !== initial.avatarUrl) {
+      if (!body.avatar_url && avatarUrl.trim() !== initial.avatarUrl) {
         body.avatar_url = avatarUrl.trim();
-      }
-      if (newPassword) {
-        body.password = newPassword;
-        body.current_password = currentPassword;
       }
       const response = await fetch("/api/profile", {
         method: "PATCH",
@@ -168,16 +196,18 @@ export default function ProfileModal({
       const profile = payload?.data?.profile || {};
       const nextFullName = profile.full_name ?? "";
       const nextUsername = profile.username ?? "";
-      const nextAvatarUrl = profile.avatar_url ?? "";
+      const resolvedAvatarUrl = profile.avatar_url ?? nextAvatarUrl ?? "";
       const nextEmail = profile.email ?? email;
       setFullName(nextFullName);
       setUsername(nextUsername);
-      setAvatarUrl(nextAvatarUrl);
+      setAvatarUrl(resolvedAvatarUrl);
+      setAvatarPreview(resolvedAvatarUrl);
+      setAvatarFile(null);
       setEmail(nextEmail);
       setInitial({
         fullName: nextFullName,
         username: nextUsername,
-        avatarUrl: nextAvatarUrl,
+        avatarUrl: resolvedAvatarUrl,
         email: nextEmail,
       });
       setCurrentPassword("");
@@ -188,13 +218,45 @@ export default function ProfileModal({
       onProfileUpdated?.({
         fullName: nextFullName,
         username: nextUsername,
-        avatarUrl: nextAvatarUrl,
+        avatarUrl: resolvedAvatarUrl,
         email: nextEmail,
       });
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "Profile update failed."]);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const issues = [...passwordErrors];
+    if (issues.length) {
+      setErrors(issues);
+      return;
+    }
+    if (!newPassword) {
+      setErrors(["Enter a new password to continue."]);
+      return;
+    }
+    try {
+      setSendingReset(true);
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        throw new Error(error.message || "Password update failed.");
+      }
+      showToast({ message: "Password updated successfully.", variant: "success" });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setErrors([]);
+      setActiveTab("profile");
+    } catch (error) {
+      setErrors([
+        error instanceof Error ? error.message : "Password update failed.",
+      ]);
+    } finally {
+      setSendingReset(false);
     }
   };
 
@@ -207,144 +269,163 @@ export default function ProfileModal({
             Review and update your account details.
           </p>
         </DialogHeader>
-        <div className="mt-6 space-y-5">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="h-14 w-14 overflow-hidden rounded-full border border-gray-200 bg-gray-100 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={avatarUrl}
-                  alt="Profile"
-                  className="h-full w-full object-cover"
-                />
-              ) : null}
+        <div className="mt-6 overflow-hidden">
+          <div
+            className={`flex w-[200%] transition-transform duration-300 ease-in-out ${
+              activeTab === "profile" ? "translate-x-0" : "-translate-x-1/2"
+            }`}
+          >
+            <div className="w-1/2 pr-6">
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="h-14 w-14 overflow-hidden rounded-full border border-gray-200 bg-gray-100 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    {avatarPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatarPreview}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                      Profile picture
+                    </label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        setAvatarFile(file);
+                      }}
+                      className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                      Profile name
+                    </label>
+                    <Input
+                      value={fullName}
+                      onChange={(event) => setFullName(event.target.value)}
+                      placeholder="Your full name"
+                      className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                      Username
+                    </label>
+                    <Input
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      placeholder="Username"
+                      className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Email
+                  </label>
+                  <Input
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="mt-2 w-full rounded-xl border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 shadow-sm outline-none dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-300"
+                    disabled
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Platform preference
+                  </label>
+                  <Input
+                    value={platformPreference}
+                    placeholder="Not set"
+                    className="mt-2 w-full rounded-xl border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 shadow-sm outline-none dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-300"
+                    disabled
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-300">
+                  <span>Need to change your password?</span>
+                  <Button
+                    type="button"
+                    variant="unstyled"
+                    onClick={() => setActiveTab("reset")}
+                    className="text-xs font-semibold text-indigo-600 transition hover:text-indigo-500 dark:text-indigo-300"
+                  >
+                    Reset Password
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex-1">
-              <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Profile picture URL
-              </label>
-              <Input
-                value={avatarUrl}
-                onChange={(event) => setAvatarUrl(event.target.value)}
-                placeholder="https://"
-                className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
-                disabled={loading}
-              />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Profile name
-              </label>
-              <Input
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                placeholder="Your full name"
-                className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
-                disabled={loading}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Username
-              </label>
-              <Input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Username"
-                className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
-                disabled={loading}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-              Email
-            </label>
-            <Input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="mt-2 w-full rounded-xl border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 shadow-sm outline-none dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-300"
-              disabled
-            />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Current password
-              </label>
-              <Input
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-                placeholder="Enter current password"
-                type="password"
-                className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
-                disabled={loading}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                New password
-              </label>
-              <Input
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                placeholder="Leave blank to keep current"
-                type="password"
-                className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
-                disabled={loading}
-              />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Confirm new password
-              </label>
-              <Input
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                type="password"
-                className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
-                disabled={loading}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant="unstyled"
-                disabled={sendingReset || loading || !email}
-                onClick={async () => {
-                  try {
-                    setSendingReset(true);
-                    const response = await fetch("/api/auth/reset-password", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ email }),
-                    });
-                    const payload = await response.json();
-                    if (!response.ok || !payload?.success) {
-                      throw new Error(payload?.error || "Reset email failed.");
-                    }
-                    showToast({
-                      message: "Password reset email sent.",
-                      variant: "success",
-                    });
-                  } catch (error) {
-                    setErrors([
-                      error instanceof Error
-                        ? error.message
-                        : "Reset email failed.",
-                    ]);
-                  } finally {
-                    setSendingReset(false);
-                  }
-                }}
-                className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-300"
-              >
-                {sendingReset ? "Sending..." : "Send reset email"}
-              </Button>
+
+            <div className="w-1/2 pl-6">
+              <div className="space-y-5">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Current password
+                  </label>
+                  <Input
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    placeholder="Enter current password"
+                    type="password"
+                    className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    New password
+                  </label>
+                  <Input
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    placeholder="Enter new password"
+                    type="password"
+                    className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Confirm new password
+                  </label>
+                  <Input
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    type="password"
+                    className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="unstyled"
+                    onClick={() => setActiveTab("profile")}
+                    className="rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:text-gray-300"
+                  >
+                    Done
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="unstyled"
+                    onClick={handlePasswordReset}
+                    disabled={sendingReset || loading}
+                    className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                  >
+                    {sendingReset ? "Updating..." : "Update Password"}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

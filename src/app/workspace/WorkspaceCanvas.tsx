@@ -81,6 +81,7 @@ export default function WorkspaceCanvas() {
     duplicatePage,
     deletePage,
     setZoom,
+    updateZoom,
     updatePage,
     updatePrompt,
     runPrompt,
@@ -112,6 +113,10 @@ export default function WorkspaceCanvas() {
   const [renameValue, setRenameValue] = useState("");
   const [pageContextMenu, setPageContextMenu] = useState<{
     id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [canvasContextMenu, setCanvasContextMenu] = useState<{
     x: number;
     y: number;
   } | null>(null);
@@ -150,6 +155,13 @@ export default function WorkspaceCanvas() {
       state.activeProjectId
         ? state.pages.filter((page) => page.projectId === state.activeProjectId)
         : [],
+    [state.pages, state.activeProjectId]
+  );
+  const visiblePages = useMemo(
+    () =>
+      state.activeProjectId
+        ? state.pages.filter((page) => page.projectId === state.activeProjectId)
+        : state.pages,
     [state.pages, state.activeProjectId]
   );
   const canOpenProjectModals = Boolean(state.activeProjectId && projectPages.length);
@@ -258,6 +270,28 @@ export default function WorkspaceCanvas() {
       document.removeEventListener("keydown", handleKey);
     };
   }, [pageContextMenu]);
+
+  useEffect(() => {
+    setEditingElementId(null);
+    setRenamingPageId(null);
+    setRenameValue("");
+  }, [state.activeProjectId]);
+
+  useEffect(() => {
+    if (!canvasContextMenu) return;
+    const handleClick = () => setCanvasContextMenu(null);
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCanvasContextMenu(null);
+    };
+    document.addEventListener("click", handleClick);
+    document.addEventListener("contextmenu", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("contextmenu", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [canvasContextMenu]);
 
   const scheduleRender = useCallback(() => {
     if (renderRafRef.current !== null) return;
@@ -834,6 +868,12 @@ export default function WorkspaceCanvas() {
         className={`relative mt-6 h-130 w-full overflow-hidden rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 ${
           panning.cursor === "grabbing" ? "cursor-grabbing" : "cursor-grab"
         }`}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          const target = event.target as HTMLElement;
+          if (target.closest("[data-page-frame='true']")) return;
+          setCanvasContextMenu({ x: event.clientX, y: event.clientY });
+        }}
         onPointerDownCapture={(event) => {
           const target = event.target as HTMLElement;
           if (event.button === 2) return;
@@ -900,7 +940,7 @@ export default function WorkspaceCanvas() {
           }}
         >
           {/* Pages rendered inside infinite canvas */}
-          {state.pages.map((page, index) => {
+          {visiblePages.map((page, index) => {
             const isActive = page.id === state.activePageId;
             const pageElements = page.elements;
             const hasElements = pageElements.length > 0;
@@ -1356,6 +1396,55 @@ export default function WorkspaceCanvas() {
           </div>
         ) : null}
       </div>
+
+      {canvasContextMenu ? (
+        <div
+          className="fixed z-50 w-40 rounded-xl border border-gray-200 bg-white p-2 text-xs shadow-lg dark:border-gray-800 dark:bg-gray-950"
+          style={{
+            left:
+              typeof window === "undefined"
+                ? canvasContextMenu.x
+                : Math.min(canvasContextMenu.x, window.innerWidth - 180),
+            top:
+              typeof window === "undefined"
+                ? canvasContextMenu.y
+                : Math.min(canvasContextMenu.y, window.innerHeight - 140),
+          }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setCanvasContextMenu(null)}
+            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-900/60"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              updateZoom(0.1);
+              setCanvasContextMenu(null);
+            }}
+            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-900/60"
+          >
+            Zoom In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              updateZoom(-0.1);
+              setCanvasContextMenu(null);
+            }}
+            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-900/60"
+          >
+            Zoom Out
+          </button>
+        </div>
+      ) : null}
 
       {isFullView && pageContextMenu ? (
         <div

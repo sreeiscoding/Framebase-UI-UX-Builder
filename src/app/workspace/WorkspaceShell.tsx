@@ -47,6 +47,7 @@ export default function WorkspaceShell({
     openExport,
     undo,
     redo,
+    openPlatformLock,
   } = useWorkspace();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export default function WorkspaceShell({
   const [viewOpen, setViewOpen] = useState(false);
   const { requireAuth } = useAuth();
   const authReason = "Create an account to continue.";
+  const isPlatformLocked = Boolean(state.activeProjectId);
 
 
   const pagesByProject = useMemo(() => {
@@ -258,26 +260,44 @@ export default function WorkspaceShell({
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-gray-50 p-2 dark:bg-gray-950/40">
             <button
               type="button"
-              onClick={() => setPlatform("web")}
+              onClick={() => {
+                if (isPlatformLocked && state.platform !== "web") {
+                  openPlatformLock();
+                  return;
+                }
+                setPlatform("web");
+              }}
               className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                 state.platform === "web"
                   ? "bg-white text-indigo-600 shadow-sm dark:bg-gray-900 dark:text-indigo-400"
-                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                  : `text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 ${
+                      isPlatformLocked ? "opacity-60" : ""
+                    }`
               }`}
               aria-pressed={state.platform === "web"}
+              aria-disabled={isPlatformLocked && state.platform !== "web"}
             >
               <FontAwesomeIcon icon={faGlobe} className="text-sm" />
               Web
             </button>
             <button
               type="button"
-              onClick={() => setPlatform("mobile")}
+              onClick={() => {
+                if (isPlatformLocked && state.platform !== "mobile") {
+                  openPlatformLock();
+                  return;
+                }
+                setPlatform("mobile");
+              }}
               className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                 state.platform === "mobile"
                   ? "bg-white text-indigo-600 shadow-sm dark:bg-gray-900 dark:text-indigo-400"
-                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                  : `text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 ${
+                      isPlatformLocked ? "opacity-60" : ""
+                    }`
               }`}
               aria-pressed={state.platform === "mobile"}
+              aria-disabled={isPlatformLocked && state.platform !== "mobile"}
             >
               <FontAwesomeIcon icon={faMobileScreen} className="text-sm" />
               Mobile
@@ -347,7 +367,10 @@ export default function WorkspaceShell({
                       >
                         <button
                           type="button"
-                          onClick={() => toggleProjectExpanded(project.id)}
+                          onClick={() => {
+                            setActiveProject(project.id);
+                            toggleProjectExpanded(project.id);
+                          }}
                           onDoubleClick={() => {
                             setRenamingProjectId(project.id);
                             setRenameProjectValue(project.name);
@@ -663,6 +686,22 @@ export default function WorkspaceShell({
             className="flex w-full items-center rounded-lg px-3 py-2 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-900/60"
           >
             Add Page
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const project = state.projects.find(
+                (item) => item.id === projectContextMenu.id
+              );
+              if (project) {
+                setRenamingProjectId(project.id);
+                setRenameProjectValue(project.name);
+              }
+              setProjectContextMenu(null);
+            }}
+            className="mt-1 flex w-full items-center rounded-lg px-3 py-2 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-900/60"
+          >
+            Rename
           </button>
           <button
             type="button"

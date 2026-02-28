@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import WorkspaceShell from "./WorkspaceShell";
 import { WorkspaceProvider } from "./workspace-context";
 import { getSupabaseClient } from "@/lib/supabase-client";
+import LoadingScreen from "@/components/LoadingScreen";
 
 export default function WorkspaceLayout({
   children,
@@ -36,8 +37,12 @@ export default function WorkspaceLayout({
       });
   }, [router]);
 
-  if (!authChecked || !authorized) {
-    return null;
+  if (!authChecked) {
+    return <LoadingScreen message="Checking your session..." />;
+  }
+
+  if (!authorized) {
+    return <LoadingScreen message="Redirecting to landing..." />;
   }
 
   return (

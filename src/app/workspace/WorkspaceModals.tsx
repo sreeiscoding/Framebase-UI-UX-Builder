@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import JSZip from "jszip";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -18,6 +19,7 @@ import {
   faCircleCheck,
 } from "@fortawesome/free-solid-svg-icons";
 import ThemeToggle from "@/components/ThemeToggle";
+import { getSupabaseClient } from "@/lib/supabase-client";
 import {
   useWorkspace,
   type CaseStudySlide,
@@ -124,6 +126,7 @@ export default function WorkspaceModals() {
     closeKnowYourDesign,
     closePromptGenerator,
     closeSettings,
+    closePlatformLock,
     generateMvpPrompt,
     generateProjectAnalysis,
     generateProjectCode,
@@ -132,6 +135,7 @@ export default function WorkspaceModals() {
     closeCaseStudyPreview,
     generateCaseStudyPpt,
   } = useWorkspace();
+  const router = useRouter();
   const [exportMode, setExportMode] = useState<ExportMode | null>(null);
   const [exportStep, setExportStep] = useState<ExportStep>("mode");
   const [exportProjectId, setExportProjectId] = useState<string | null>(null);
@@ -145,6 +149,25 @@ export default function WorkspaceModals() {
   const [pageCopyStatus, setPageCopyStatus] = useState("");
   const [codeTab, setCodeTab] = useState<"html" | "css" | "combined">("html");
   const [caseStudyIndex, setCaseStudyIndex] = useState(0);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsErrors, setSettingsErrors] = useState<string[]>([]);
+  const [settingsAvatarFile, setSettingsAvatarFile] = useState<File | null>(null);
+  const [settingsAvatarPreview, setSettingsAvatarPreview] = useState("");
+  const [settingsProfile, setSettingsProfile] = useState({
+    fullName: "",
+    username: "",
+    email: "",
+    avatarUrl: "",
+    platformPreference: "",
+  });
+  const [settingsInitial, setSettingsInitial] = useState({
+    fullName: "",
+    username: "",
+    email: "",
+    avatarUrl: "",
+    platformPreference: "",
+  });
 
   const activePage = useMemo(
     () => state.pages.find((page) => page.id === state.activePageId),
@@ -214,6 +237,130 @@ export default function WorkspaceModals() {
     ui.projectCodeOpen ||
     ui.caseStudyOpen ||
     ui.settingsOpen;
+
+  useEffect(() => {
+    if (!ui.settingsOpen) return;
+    let active = true;
+    setSettingsLoading(true);
+    setSettingsErrors([]);
+    const loadProfile = async () => {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        throw new Error("Unable to load your session.");
+      }
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
+        .single();
+      if (profileError) {
+        throw new Error(profileError.message || "Failed to load profile.");
+      }
+      if (!active) return;
+      const next = {
+        fullName: profile?.full_name ?? "",
+        username: profile?.username ?? "",
+        email: profile?.email ?? data.user.email ?? "",
+        avatarUrl: profile?.avatar_url ?? "",
+        platformPreference: profile?.platform_preference ?? "",
+      };
+      setSettingsProfile(next);
+      setSettingsInitial(next);
+      setSettingsAvatarPreview(next.avatarUrl);
+      setSettingsAvatarFile(null);
+    };
+    loadProfile()
+      .catch((error) => {
+        if (!active) return;
+        setSettingsErrors([
+          error instanceof Error ? error.message : "Failed to load profile.",
+        ]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setSettingsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [ui.settingsOpen]);
+
+  useEffect(() => {
+    if (!settingsAvatarFile) return;
+    const previewUrl = URL.createObjectURL(settingsAvatarFile);
+    setSettingsAvatarPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [settingsAvatarFile]);
+
+  const settingsHasChanges =
+    settingsProfile.fullName.trim() !== settingsInitial.fullName ||
+    settingsProfile.username.trim() !== settingsInitial.username ||
+    settingsProfile.avatarUrl.trim() !== settingsInitial.avatarUrl ||
+    Boolean(settingsAvatarFile);
+
+  const handleSettingsSave = async () => {
+    if (!settingsHasChanges) return;
+    try {
+      setSettingsSaving(true);
+      const supabase = getSupabaseClient();
+      let nextAvatarUrl = settingsProfile.avatarUrl.trim();
+      const { data } = await supabase.auth.getUser();
+      if (settingsAvatarFile && data.user) {
+        const fileExt = settingsAvatarFile.name.split(".").pop() || "png";
+        const fileName = `${data.user.id}-${Date.now()}.${fileExt}`;
+        const upload = await supabase.storage
+          .from("avatars")
+          .upload(fileName, settingsAvatarFile, { upsert: true });
+        if (upload.error) {
+          throw new Error(upload.error.message || "Avatar upload failed.");
+        }
+        const { data: urlData } = supabase.storage
+          .from("avatars")
+          .getPublicUrl(fileName);
+        nextAvatarUrl = urlData.publicUrl;
+      }
+      const payload: Record<string, string> = {};
+      if (settingsProfile.fullName.trim() !== settingsInitial.fullName) {
+        payload.full_name = settingsProfile.fullName.trim();
+      }
+      if (settingsProfile.username.trim() !== settingsInitial.username) {
+        payload.username = settingsProfile.username.trim();
+      }
+      if (nextAvatarUrl && nextAvatarUrl !== settingsInitial.avatarUrl) {
+        payload.avatar_url = nextAvatarUrl;
+      }
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || "Profile update failed.");
+      }
+      const profile = result?.data?.profile || {};
+      const next = {
+        fullName: profile.full_name ?? settingsProfile.fullName,
+        username: profile.username ?? settingsProfile.username,
+        email: profile.email ?? settingsProfile.email,
+        avatarUrl: profile.avatar_url ?? nextAvatarUrl ?? settingsProfile.avatarUrl,
+        platformPreference:
+          profile.platform_preference ?? settingsProfile.platformPreference,
+      };
+      setSettingsProfile(next);
+      setSettingsInitial(next);
+      setSettingsAvatarPreview(next.avatarUrl);
+      setSettingsAvatarFile(null);
+      setSettingsErrors([]);
+    } catch (error) {
+      setSettingsErrors([
+        error instanceof Error ? error.message : "Profile update failed.",
+      ]);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const handleCopyPrompt = async () => {
     if (!resolvedPrompt) return;
@@ -1108,7 +1255,143 @@ export default function WorkspaceModals() {
         title="Workspace Preferences"
         icon={faSliders}
       >
-        <div className="space-y-5 text-sm text-gray-600 dark:text-gray-400">
+        <div className="space-y-6 text-sm text-gray-600 dark:text-gray-400">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 transition hover:text-indigo-500 dark:text-indigo-300"
+          >
+            <FontAwesomeIcon icon={faChevronLeft} className="text-xs" />
+            Back to landing
+          </button>
+
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-950">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Account details
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Update your workspace profile and avatar.
+                </p>
+              </div>
+              {settingsSaving ? (
+                <span className="text-xs font-semibold text-indigo-500">
+                  Saving...
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="h-12 w-12 overflow-hidden rounded-full border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-900">
+                  {settingsAvatarPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={settingsAvatarPreview}
+                      alt="Profile"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : null}
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Profile picture
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      setSettingsAvatarFile(event.target.files?.[0] || null)
+                    }
+                    className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                    disabled={settingsLoading}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Profile name
+                  </label>
+                  <input
+                    value={settingsProfile.fullName}
+                    onChange={(event) =>
+                      setSettingsProfile((prev) => ({
+                        ...prev,
+                        fullName: event.target.value,
+                      }))
+                    }
+                    placeholder="Your name"
+                    className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                    disabled={settingsLoading}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Username
+                  </label>
+                  <input
+                    value={settingsProfile.username}
+                    onChange={(event) =>
+                      setSettingsProfile((prev) => ({
+                        ...prev,
+                        username: event.target.value,
+                      }))
+                    }
+                    placeholder="Username"
+                    className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                    disabled={settingsLoading}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                  Email
+                </label>
+                <input
+                  value={settingsProfile.email}
+                  readOnly
+                  className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 shadow-sm outline-none dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                  Platform preference
+                </label>
+                <input
+                  value={settingsProfile.platformPreference}
+                  readOnly
+                  placeholder="Not set"
+                  className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 shadow-sm outline-none dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400"
+                />
+              </div>
+
+              {settingsErrors.length ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+                  <ul className="space-y-1">
+                    {settingsErrors.map((error) => (
+                      <li key={error}>- {error}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSettingsSave}
+                  disabled={settingsSaving || settingsLoading || !settingsHasChanges}
+                  className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                >
+                  {settingsSaving ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-950">
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -1130,6 +1413,29 @@ export default function WorkspaceModals() {
               <li>Persist canvas zoom and layout</li>
               <li>Keep accent styling consistent</li>
             </ul>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={ui.platformLockOpen}
+        onClose={closePlatformLock}
+        title="Platform Locked"
+        icon={faCircleQuestion}
+        className="max-w-md"
+      >
+        <div className="space-y-4 text-sm text-gray-600 dark:text-gray-400">
+          <p>
+            Save and close the current project to change the platform.
+          </p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={closePlatformLock}
+              className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+            >
+              Done
+            </button>
           </div>
         </div>
       </Modal>
