@@ -392,6 +392,9 @@ export default function WorkspaceShell({
                             }`}
                           />
                           <span className="truncate">{project.name}</span>
+                          <span className="ml-2 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">
+                            {project.platform === "mobile" ? "Mobile" : "Web"}
+                          </span>
                         </button>
                         <button
                           type="button"

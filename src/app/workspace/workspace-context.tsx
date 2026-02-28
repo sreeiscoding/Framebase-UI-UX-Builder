@@ -1472,6 +1472,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           const mappedProjects: ProjectFolder[] = projects.map((project) => ({
             id: project.id,
             name: project.name,
+            platform: project.platform_type === "mobile" ? "mobile" : "web",
           }));
 
           const activeProjectId = mappedProjects[0]?.id ?? null;
@@ -1506,6 +1507,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
               const projects = parsed.projects.map((project) => ({
                 id: project.id,
                 name: project.name,
+                platform:
+                  project.platform === "mobile" || project.platform === "web"
+                    ? project.platform
+                    : parsed.platform === "mobile" || parsed.platform === "web"
+                    ? parsed.platform
+                    : defaultState.platform,
               }));
               let pages = parsed.projects.flatMap((project) =>
                 (project.pages ?? []).map((page, index) => ({
@@ -1537,10 +1544,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                 pages.find((page) => page.projectId === activeProjectId)?.id ||
                 pages[0]?.id ||
                 "";
+              const activeProject = projects.find(
+                (project) => project.id === activeProjectId
+              );
               const platform: Platform =
-                parsed.platform === "mobile" || parsed.platform === "web"
+                activeProject?.platform ||
+                (parsed.platform === "mobile" || parsed.platform === "web"
                   ? parsed.platform
-                  : defaultState.platform;
+                  : defaultState.platform);
               if (active) {
                 dispatch({
                   type: "RESET",
@@ -1717,6 +1728,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const project: ProjectFolder = {
         id: result.data.project.id,
         name: result.data.project.name,
+        platform:
+          result.data.project.platform_type === "mobile" ? "mobile" : "web",
       };
       const pageResult = await apiFetch<{ page: ApiPage }>(
         `/api/projects/${project.id}/pages`,
@@ -1746,6 +1759,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const project: ProjectFolder = {
       id: createId(),
       name: trimmed,
+      platform: state.platform,
     };
     const page = { ...basePage, projectId: project.id };
     commit({
@@ -1777,10 +1791,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       pagesForProject.find((page) => page.id === state.activePageId)?.id ??
       pagesForProject[0]?.id ??
       state.activePageId;
+    const nextProject = state.projects.find((project) => project.id === id);
+    const nextPlatform = nextProject?.platform ?? state.platform;
     commit({
       ...state,
       activeProjectId: id,
       activePageId: nextActivePageId,
+      platform: nextPlatform,
     });
     setView((prev) =>
       prev.selectedElementId ? { ...prev, selectedElementId: null } : prev
