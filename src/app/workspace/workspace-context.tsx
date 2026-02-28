@@ -151,6 +151,7 @@ export interface CanvasElement {
 export interface ProjectFolder {
   id: string;
   name: string;
+  platform?: Platform;
 }
 
 export interface WorkspacePageData {
@@ -1361,6 +1362,7 @@ interface WorkspaceContextValue {
   closeProjectCode: () => void;
   openSettings: () => void;
   closeSettings: () => void;
+  closeActiveProject: () => void;
   openPlatformLock: () => void;
   closePlatformLock: () => void;
   setError: (message: string | null) => void;
@@ -2556,6 +2558,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       })),
     openSettings: () => setUi((prev) => ({ ...prev, settingsOpen: true })),
     closeSettings: () => setUi((prev) => ({ ...prev, settingsOpen: false })),
+    closeActiveProject: () => {
+      if (!state.activeProjectId) return;
+      commit({ ...state, activeProjectId: null, activePageId: "" });
+      setView((prev) =>
+        prev.selectedElementId ? { ...prev, selectedElementId: null } : prev
+      );
+    },
     openPlatformLock: () =>
       setUi((prev) => ({ ...prev, platformLockOpen: true })),
     closePlatformLock: () =>

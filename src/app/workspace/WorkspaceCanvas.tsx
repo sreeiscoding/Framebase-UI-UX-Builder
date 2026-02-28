@@ -89,6 +89,7 @@ export default function WorkspaceCanvas() {
     openPromptGenerator,
     openProjectCode,
     generateCaseStudyPpt,
+    closeActiveProject,
   } = useWorkspace();
   const { requireAuth } = useAuth();
   const authReason = "Create an account to continue.";
@@ -161,7 +162,7 @@ export default function WorkspaceCanvas() {
     () =>
       state.activeProjectId
         ? state.pages.filter((page) => page.projectId === state.activeProjectId)
-        : state.pages,
+        : [],
     [state.pages, state.activeProjectId]
   );
   const canOpenProjectModals = Boolean(state.activeProjectId && projectPages.length);
@@ -1418,10 +1419,15 @@ export default function WorkspaceCanvas() {
         >
           <button
             type="button"
-            onClick={() => setCanvasContextMenu(null)}
+            onClick={() => {
+              if (state.activeProjectId) {
+                closeActiveProject();
+              }
+              setCanvasContextMenu(null);
+            }}
             className="flex w-full items-center rounded-lg px-3 py-2 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-900/60"
           >
-            Close
+            {state.activeProjectId ? "Save & Close" : "Close"}
           </button>
           <button
             type="button"
