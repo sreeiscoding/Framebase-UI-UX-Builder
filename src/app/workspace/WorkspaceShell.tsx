@@ -22,6 +22,20 @@ import { faFileLines, faUserCircle } from "@fortawesome/free-regular-svg-icons";
 import { useWorkspace } from "./workspace-context";
 import ConfirmModal from "./ConfirmModal";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { getSupabaseClient } from "@/lib/supabase-client";
+
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="32" fill="#E5E7EB"/><circle cx="32" cy="26" r="12" fill="#CBD5F5"/><rect x="14" y="40" width="36" height="18" rx="9" fill="#CBD5F5"/></svg>`
+  );
+
+const getStoragePathFromPublicUrl = (url: string) => {
+  const marker = "/storage/v1/object/public/avatars/";
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+  return url.slice(index + marker.length);
+};
 
 export default function WorkspaceShell({
   children,
@@ -77,6 +91,19 @@ export default function WorkspaceShell({
   const { requireAuth } = useAuth();
   const authReason = "Create an account to continue.";
   const isPlatformLocked = Boolean(state.activeProjectId);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const supabase = useMemo(() => getSupabaseClient(), []);
+
+  const resolveAvatarUrl = async (url: string) => {
+    if (!url) return "";
+    const path = getStoragePathFromPublicUrl(url);
+    if (!path) return url;
+    const { data, error } = await supabase.storage
+      .from("avatars")
+      .createSignedUrl(path, 60 * 60);
+    if (error || !data?.signedUrl) return url;
+    return data.signedUrl;
+  };
 
 
   const pagesByProject = useMemo(() => {
@@ -159,6 +186,57 @@ export default function WorkspaceShell({
       setSidebarOpen(false);
     }
   }, [view.viewMode]);
+
+  useEffect(() => {
+    let active = true;
+    const loadAvatar = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) {
+        if (active) setAvatarUrl("");
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      const metadata = (data.user.user_metadata || {}) as Record<string, string>;
+      const avatar =
+        profile?.avatar_url ||
+        metadata.avatar_url ||
+        metadata.avatarUrl ||
+        "";
+      const resolved = await resolveAvatarUrl(avatar);
+      if (active) setAvatarUrl(resolved || "");
+    };
+    loadAvatar().catch(() => {
+      if (active) setAvatarUrl("");
+    });
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    const handleProfileUpdate = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { avatarPreview?: string; avatarUrl?: string }
+        | undefined;
+      if (detail?.avatarPreview) {
+        setAvatarUrl(detail.avatarPreview);
+      } else if (detail?.avatarUrl) {
+        setAvatarUrl(detail.avatarUrl);
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("profile:updated", handleProfileUpdate);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("profile:updated", handleProfileUpdate);
+      }
+    };
+  }, []);
 
   const handleAddProject = () => {
     requireAuth(
@@ -652,7 +730,12 @@ export default function WorkspaceShell({
                 className="hidden h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 md:flex"
                 aria-label="Open settings"
               >
-                <FontAwesomeIcon icon={faUserCircle} className="text-lg" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarUrl || DEFAULT_AVATAR}
+                  alt="Avatar"
+                  className="h-7 w-7 rounded-full object-cover"
+                />
               </button>
             </div>
           </header>

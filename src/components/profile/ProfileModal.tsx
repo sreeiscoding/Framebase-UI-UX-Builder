@@ -19,6 +19,26 @@ type ProfileModalProps = {
 };
 
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const MAX_AVATAR_MB = 2;
+
+const getStoragePathFromPublicUrl = (url: string) => {
+  const marker = "/storage/v1/object/public/avatars/";
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+  return url.slice(index + marker.length);
+};
+
+const resolveAvatarUrl = async (supabase: ReturnType<typeof getSupabaseClient>, url: string) => {
+  if (!url) return "";
+  const path = getStoragePathFromPublicUrl(url);
+  if (!path) return url;
+  const { data, error } = await supabase
+    .storage
+    .from("avatars")
+    .createSignedUrl(path, 60 * 60);
+  if (error || !data?.signedUrl) return url;
+  return data.signedUrl;
+};
 
 export default function ProfileModal({
   open,
@@ -70,15 +90,33 @@ export default function ProfileModal({
       }
       if (!active) return;
       const metadata = (data.user.user_metadata || {}) as Record<string, string>;
-      const nextFullName = profile?.full_name ?? metadata.full_name ?? "";
-      const nextUsername = profile?.username ?? metadata.username ?? "";
-      const nextAvatarUrl = profile?.avatar_url ?? metadata.avatar_url ?? "";
-      const nextEmail = profile?.email ?? data.user.email ?? "";
+      const nextFullName =
+        profile?.full_name ??
+        metadata.full_name ??
+        metadata.fullName ??
+        metadata.name ??
+        "";
+      const nextUsername =
+        profile?.username ??
+        metadata.username ??
+        metadata.user_name ??
+        "";
+      const nextAvatarUrl =
+        profile?.avatar_url ??
+        metadata.avatar_url ??
+        metadata.avatarUrl ??
+        "";
+      const nextEmail =
+        data.user.email ??
+        profile?.email ??
+        metadata.email ??
+        "";
       const nextPlatform = profile?.platform_preference ?? "";
+      const resolvedAvatar = await resolveAvatarUrl(supabase, nextAvatarUrl);
       setFullName(nextFullName);
       setUsername(nextUsername);
       setAvatarUrl(nextAvatarUrl);
-      setAvatarPreview(nextAvatarUrl);
+      setAvatarPreview(resolvedAvatar);
       setEmail(nextEmail);
       setPlatformPreference(nextPlatform);
       setInitial({
@@ -206,11 +244,12 @@ export default function ProfileModal({
       const nextFullName = profile.full_name ?? "";
       const nextUsername = profile.username ?? "";
       const resolvedAvatarUrl = profile.avatar_url ?? nextAvatarUrl ?? "";
+      const resolvedPreview = await resolveAvatarUrl(supabase, resolvedAvatarUrl);
       const nextEmail = profile.email ?? authData.user.email ?? email;
       setFullName(nextFullName);
       setUsername(nextUsername);
       setAvatarUrl(resolvedAvatarUrl);
-      setAvatarPreview(resolvedAvatarUrl);
+      setAvatarPreview(resolvedPreview);
       setAvatarFile(null);
       setEmail(nextEmail);
       setInitial({
@@ -230,8 +269,57 @@ export default function ProfileModal({
         avatarUrl: resolvedAvatarUrl,
         email: nextEmail,
       });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("profile:updated", {
+            detail: {
+              avatarUrl: resolvedAvatarUrl,
+              avatarPreview: resolvedPreview,
+              fullName: nextFullName,
+              username: nextUsername,
+              email: nextEmail,
+            },
+          })
+        );
+      }
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "Profile update failed."]);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    try {
+      setSaving(true);
+      const supabase = getSupabaseClient();
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error("Unable to load your session.");
+      }
+      if (avatarUrl) {
+        const path = getStoragePathFromPublicUrl(avatarUrl);
+        if (path) {
+          await supabase.storage.from("avatars").remove([path]);
+        }
+      }
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar_url: null })
+        .eq("id", authData.user.id);
+      if (error) {
+        throw new Error(error.message || "Avatar delete failed.");
+      }
+      setAvatarUrl("");
+      setAvatarPreview("");
+      setAvatarFile(null);
+      setInitial((prev) => ({ ...prev, avatarUrl: "" }));
+      setErrors([]);
+      showToast({ message: "Avatar removed.", variant: "success" });
+    } catch (error) {
+      setErrors([
+        error instanceof Error ? error.message : "Avatar delete failed.",
+      ]);
     } finally {
       setSaving(false);
     }
@@ -306,11 +394,33 @@ export default function ProfileModal({
                       accept="image/*"
                       onChange={(event) => {
                         const file = event.target.files?.[0] || null;
+                        if (file) {
+                          if (!file.type.startsWith("image/")) {
+                            setErrors(["Profile picture must be an image."]);
+                            return;
+                          }
+                          const sizeMb = file.size / (1024 * 1024);
+                          if (sizeMb > MAX_AVATAR_MB) {
+                            setErrors([`Profile picture must be under ${MAX_AVATAR_MB}MB.`]);
+                            return;
+                          }
+                        }
+                        setErrors([]);
                         setAvatarFile(file);
                       }}
                       className="mt-2 w-full rounded-xl border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-indigo-400 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100"
                       disabled={loading}
                     />
+                    {avatarPreview ? (
+                      <button
+                        type="button"
+                        onClick={handleAvatarDelete}
+                        className="mt-2 text-xs font-semibold text-red-600 transition hover:text-red-500 dark:text-red-400"
+                        disabled={saving || loading}
+                      >
+                        Remove photo
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">

@@ -11,17 +11,42 @@ import { navLinks } from "@/lib/constants";
 import { getSupabaseClient } from "@/lib/supabase-client";
 import type { User } from "@supabase/supabase-js";
 
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="32" fill="#E5E7EB"/><circle cx="32" cy="26" r="12" fill="#CBD5F5"/><rect x="14" y="40" width="36" height="18" rx="9" fill="#CBD5F5"/></svg>`
+  );
+
+const getStoragePathFromPublicUrl = (url: string) => {
+  const marker = "/storage/v1/object/public/avatars/";
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+  return url.slice(index + marker.length);
+};
+
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
   const { openAuthModal } = useAuth();
   const supabase = useMemo(() => getSupabaseClient(), []);
+
+  const resolveAvatarUrl = async (url: string) => {
+    if (!url) return "";
+    const path = getStoragePathFromPublicUrl(url);
+    if (!path) return url;
+    const { data, error } = await supabase.storage
+      .from("avatars")
+      .createSignedUrl(path, 60 * 60);
+    if (error || !data?.signedUrl) return url;
+    return data.signedUrl;
+  };
 
   const loadProfile = async (user: User) => {
     try {
@@ -39,6 +64,13 @@ export default function Navbar() {
         user.email ||
         "Account";
       setDisplayName(name);
+      const avatar =
+        data?.avatar_url ||
+        metadata.avatar_url ||
+        metadata.avatarUrl ||
+        "";
+      const resolved = await resolveAvatarUrl(avatar);
+      setAvatarUrl(resolved || "");
     } catch {
       const metadata = (user.user_metadata || {}) as Record<string, string>;
       setDisplayName(
@@ -47,6 +79,7 @@ export default function Navbar() {
           user.email ||
           "Account"
       );
+      setAvatarUrl("");
     }
   };
 
@@ -62,6 +95,7 @@ export default function Navbar() {
           loadProfile(user);
         } else {
           setDisplayName("");
+          setAvatarUrl("");
         }
         setAuthLoading(false);
       })
@@ -69,6 +103,7 @@ export default function Navbar() {
         if (!active) return;
         setAuthUser(null);
         setDisplayName("");
+        setAvatarUrl("");
         setAuthLoading(false);
       });
 
@@ -80,6 +115,7 @@ export default function Navbar() {
           loadProfile(user);
         } else {
           setDisplayName("");
+          setAvatarUrl("");
         }
       }
     );
@@ -132,6 +168,12 @@ export default function Navbar() {
                 onClick={() => setProfileMenuOpen((open) => !open)}
                 className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
               >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarUrl || DEFAULT_AVATAR}
+                  alt="Avatar"
+                  className="h-6 w-6 rounded-full object-cover"
+                />
                 <span className="max-w-[140px] truncate">{displayName || "Account"}</span>
                 <FontAwesomeIcon icon={faChevronDown} className="text-xs" />
               </button>
@@ -275,6 +317,9 @@ export default function Navbar() {
           setDisplayName(
             profile.fullName || profile.username || profile.email || "Account"
           );
+          if (profile.avatarUrl) {
+            setAvatarUrl(profile.avatarUrl);
+          }
         }}
       />
     </header>

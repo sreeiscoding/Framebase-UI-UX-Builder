@@ -226,9 +226,12 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
     muted: "#6b7280",
   };
 
-  return sections.map((section) => {
+  const elements: CanvasElement[] = [];
+
+  sections.forEach((section) => {
     const preset = ELEMENT_PRESETS[section];
     const width = Math.max(frameWidth - horizontalPadding * 2, 280);
+    let height = preset.height;
     const element: CanvasElement = {
       id: createId(),
       type: section,
@@ -236,7 +239,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
       x: horizontalPadding,
       y: cursorY,
       width,
-      height: preset.height,
+      height,
       content: `Click to edit ${preset.label.toLowerCase()}...`,
       padding: preset.padding,
       align: preset.align,
@@ -256,9 +259,53 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
         zIndex: 1,
       },
     };
-    cursorY += preset.height + gap;
-    return element;
+
+    elements.push(element);
+
+    if (platform === "web" && (section === "features" || section === "pricing")) {
+      const columns = 3;
+      const cardGap = 24;
+      const cardWidth = Math.max((width - cardGap * (columns - 1)) / columns, 180);
+      const cardHeight = section === "pricing" ? 180 : 160;
+      const cardY = cursorY + 72;
+      const cardPreset = ELEMENT_PRESETS.card;
+      for (let i = 0; i < columns; i += 1) {
+        elements.push({
+          id: createId(),
+          type: "card",
+          label: section === "pricing" ? "Pricing Card" : "Feature Card",
+          x: horizontalPadding + i * (cardWidth + cardGap),
+          y: cardY,
+          width: cardWidth,
+          height: cardHeight,
+          content: "Click to edit card...",
+          padding: cardPreset.padding,
+          align: cardPreset.align,
+          background: "surface",
+          color: cardPreset.color,
+          style: {
+            paddingTop: cardPreset.padding,
+            paddingRight: cardPreset.padding,
+            paddingBottom: cardPreset.padding,
+            paddingLeft: cardPreset.padding,
+            backgroundColor: "#ffffff",
+            textAlign: "left",
+            color: textColorMap.default,
+            borderRadius: 16,
+            fontSize: 14,
+            fontWeight: "400",
+            zIndex: 2,
+          },
+        });
+      }
+      height = Math.max(height, cardHeight + 120);
+      element.height = height;
+    }
+
+    cursorY += height + gap;
   });
+
+  return elements;
 };
 
 export const generateLayoutFromSections = (
