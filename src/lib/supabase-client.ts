@@ -25,6 +25,9 @@ export const getSupabaseClient = () => {
     auth: {
       persistSession: isBrowser,
       autoRefreshToken: isBrowser,
+      lock: async (_name, _timeout, fn) => {
+        return await fn();
+      },
     },
   });
   return cachedClient;

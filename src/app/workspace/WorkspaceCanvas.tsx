@@ -135,6 +135,7 @@ export default function WorkspaceCanvas() {
   const renderRafRef = useRef<number | null>(null);
   const panRafRef = useRef<number | null>(null);
   const panDraftRef = useRef<{ x: number; y: number } | null>(null);
+  const pageDraftRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const pointerElementRef = useRef<string | null>(null);
   const centeredPageIdsRef = useRef<Set<string>>(new Set());
   const manualPageIdsRef = useRef<Set<string>>(new Set());

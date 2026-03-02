@@ -7,9 +7,11 @@ import { faBars, faChevronDown, faXmark } from "@fortawesome/free-solid-svg-icon
 import ThemeToggle from "@/components/ThemeToggle";
 import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileModal from "@/components/profile/ProfileModal";
-import { navLinks } from "@/lib/constants";
+import { navLinks, pricingPlans } from "@/lib/constants";
 import { getSupabaseClient } from "@/lib/supabase-client";
 import type { User } from "@supabase/supabase-js";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/components/ToastProvider";
 
 const DEFAULT_AVATAR =
   "data:image/svg+xml;utf8," +
@@ -30,12 +32,19 @@ export default function Navbar() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [planType, setPlanType] = useState<string | null>(null);
+  const [planStatus, setPlanStatus] = useState<string | null>(null);
+  const [planExpiresAt, setPlanExpiresAt] = useState<string | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [billingGateOpen, setBillingGateOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState("Free Trial");
   const profileRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
   const { openAuthModal } = useAuth();
+  const { showToast } = useToast();
   const supabase = useMemo(() => getSupabaseClient(), []);
+  const expiredToastRef = useRef(false);
 
   const resolveAvatarUrl = async (url: string) => {
     if (!url) return "";
@@ -71,6 +80,30 @@ export default function Navbar() {
         "";
       const resolved = await resolveAvatarUrl(avatar);
       setAvatarUrl(resolved || "");
+      setPlanType(data?.plan_type ?? null);
+      setPlanStatus(data?.plan_status ?? null);
+      setPlanExpiresAt(data?.plan_expires_at ?? data?.trial_ends_at ?? null);
+
+      if (!expiredToastRef.current) {
+        const expiredStatus =
+          typeof data?.plan_status === "string" &&
+          ["expired", "canceled", "past_due"].includes(
+            data.plan_status.toLowerCase()
+          );
+        const expiredType =
+          typeof data?.plan_type === "string" &&
+          ["expired", "trial_expired"].includes(data.plan_type.toLowerCase());
+        const expiredDate =
+          data?.plan_expires_at &&
+          new Date(data.plan_expires_at).getTime() < Date.now();
+        if (expiredStatus || expiredType || expiredDate) {
+          expiredToastRef.current = true;
+          showToast({
+            message: "Your subscription has ended. Choose a plan to continue.",
+            variant: "error",
+          });
+        }
+      }
     } catch {
       const metadata = (user.user_metadata || {}) as Record<string, string>;
       setDisplayName(
@@ -80,6 +113,9 @@ export default function Navbar() {
           "Account"
       );
       setAvatarUrl("");
+      setPlanType(null);
+      setPlanStatus(null);
+      setPlanExpiresAt(null);
     }
   };
 
@@ -96,6 +132,9 @@ export default function Navbar() {
         } else {
           setDisplayName("");
           setAvatarUrl("");
+          setPlanType(null);
+          setPlanStatus(null);
+          setPlanExpiresAt(null);
         }
         setAuthLoading(false);
       })
@@ -116,6 +155,9 @@ export default function Navbar() {
         } else {
           setDisplayName("");
           setAvatarUrl("");
+          setPlanType(null);
+          setPlanStatus(null);
+          setPlanExpiresAt(null);
         }
       }
     );
@@ -139,6 +181,45 @@ export default function Navbar() {
       document.removeEventListener("click", handleClick);
     };
   }, [profileMenuOpen]);
+
+  const hasActivePlan = useMemo(() => {
+    if (!planType) return false;
+    const normalized = planType.toLowerCase();
+    if (["free trial", "starter", "pro"].includes(normalized)) {
+      if (planExpiresAt) {
+        return new Date(planExpiresAt).getTime() >= Date.now();
+      }
+      return true;
+    }
+    return false;
+  }, [planType, planExpiresAt]);
+
+  const handleWorkspaceClick = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      openAuthModal("Create an account to continue.", "register");
+      return;
+    }
+    if (hasActivePlan) {
+      router.push("/workspace");
+      return;
+    }
+    setSelectedPlan("Free Trial");
+    setBillingGateOpen(true);
+  };
+
+  const billingPlans = useMemo(
+    () => [
+      {
+        name: "Free Trial",
+        price: "$0 for 7 days",
+        description: "Full access with zero commitment.",
+        features: ["All design tools unlocked", "AI generation", "Exports enabled"],
+      },
+      ...pricingPlans,
+    ],
+    []
+  );
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-gray-200/70 bg-white/80 backdrop-blur animate-fade-in dark:border-gray-800/70 dark:bg-gray-950/80">
@@ -193,7 +274,7 @@ export default function Navbar() {
                     type="button"
                     onClick={() => {
                       setProfileMenuOpen(false);
-                      router.push("/workspace");
+                      handleWorkspaceClick();
                     }}
                     className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900/60"
                   >
@@ -274,6 +355,16 @@ export default function Navbar() {
               <button
                 type="button"
                 className="btn-primary w-full"
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleWorkspaceClick();
+                }}
+              >
+                Your Workspace
+              </button>
+              <button
+                type="button"
+                className="btn-primary w-full"
                 onClick={async () => {
                   setMenuOpen(false);
                   await fetch("/api/auth/logout", { method: "POST" });
@@ -322,6 +413,60 @@ export default function Navbar() {
           }
         }}
       />
+
+      <Dialog open={billingGateOpen} onOpenChange={(open) => setBillingGateOpen(open)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Choose your plan</DialogTitle>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Start your 7 Days Free Trial or choose another plan to continue.
+            </p>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            {billingPlans.map((plan) => (
+              <button
+                key={plan.name}
+                type="button"
+                onClick={() => setSelectedPlan(plan.name)}
+                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                  selectedPlan === plan.name
+                    ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-500/10"
+                    : "border-gray-200 hover:border-indigo-200 dark:border-gray-800"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">{plan.name}</span>
+                  <span className="text-xs font-semibold text-indigo-600">
+                    {plan.price}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {plan.description}
+                </p>
+              </button>
+            ))}
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setBillingGateOpen(false)}
+              className="rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:text-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBillingGateOpen(false);
+                router.push(`/billing?plan=${encodeURIComponent(selectedPlan)}`);
+              }}
+              className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+            >
+              Continue billing
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
