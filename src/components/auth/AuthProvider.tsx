@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import AuthModal from "./AuthModal";
 import PasswordResetModal from "./PasswordResetModal";
 import { getSupabaseClient } from "@/lib/supabase-client";
@@ -31,6 +32,8 @@ export const useAuth = () => {
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => getSupabaseClient(), []);
+  const router = useRouter();
+  const pathname = usePathname();
   const [authOpen, setAuthOpen] = useState(false);
   const [authReason, setAuthReason] = useState<string | undefined>();
   const [authView, setAuthView] = useState<"register" | "login" | "recover">(
@@ -64,6 +67,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           setResetOpen(true);
         }
         setIsAuthenticated(Boolean(session?.user));
+        if (session?.user && pathname !== "/complete-profile") {
+          supabase
+            .from("profiles")
+            .select("username")
+            .eq("id", session.user.id)
+            .single()
+            .then(({ data }) => {
+              if (!data?.username) {
+                router.push("/complete-profile");
+              }
+            })
+            .catch(() => {
+              // ignore profile lookup errors
+            });
+        }
       }
     );
 

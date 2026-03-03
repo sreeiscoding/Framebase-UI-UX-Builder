@@ -215,6 +215,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
   const frameWidth = platform === "web" ? 1200 : 428;
   const horizontalPadding = platform === "web" ? 80 : 24;
   const gap = platform === "web" ? 32 : 24;
+  const sectionInset = platform === "web" ? 40 : 24;
   let cursorY = platform === "web" ? 64 : 48;
   const bgColorMap: Record<string, string> = {
     surface: "#ffffff",
@@ -268,8 +269,8 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
       element.style.backgroundColor = "#ffffff";
       element.style.boxShadow = "0 12px 30px rgba(15, 23, 42, 0.08)";
 
-      const logoX = 24;
-      const logoY = 20;
+      const logoX = sectionInset;
+      const logoY = Math.round((barHeight - 28) / 2);
       elements.push({
         id: createId(),
         type: "text",
@@ -299,7 +300,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
       const navWidth = 80;
       const totalNavWidth = navLabels.length * navWidth + navGap * (navLabels.length - 1);
       const leftLimit = logoX + 140 + 24;
-      const rightLimit = width - 120 - 24;
+      const rightLimit = width - sectionInset - 120;
       const availableWidth = Math.max(rightLimit - leftLimit, 0);
       const navStartX = leftLimit + Math.max(0, Math.round((availableWidth - totalNavWidth) / 2));
       navLabels.forEach((label, index) => {
@@ -309,7 +310,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
           label: "Nav Link",
           parentId: element.id,
           x: navStartX + index * (navWidth + navGap),
-          y: 24,
+          y: Math.round((barHeight - 20) / 2),
           width: navWidth,
           height: 20,
           content: label,
@@ -333,8 +334,8 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
         type: "button",
         label: "Nav CTA",
         parentId: element.id,
-        x: width - 24 - 120,
-        y: 18,
+        x: width - sectionInset - 120,
+        y: Math.round((barHeight - 36) / 2),
         width: 120,
         height: 36,
         content: "Book a demo",
@@ -360,7 +361,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
       element.style.backgroundGradient =
         "linear-gradient(135deg, rgba(224,231,255,0.9) 0%, rgba(239,246,255,0.9) 40%, rgba(253,242,248,0.9) 100%)";
       element.style.boxShadow = "0 20px 40px rgba(15, 23, 42, 0.08)";
-      const innerPadding = 32;
+      const innerPadding = sectionInset;
       const columnGap = 32;
       const innerWidth = Math.max(width - innerPadding * 2, 320);
       const leftWidth = Math.max(Math.round((innerWidth - columnGap) * 0.56), 360);
@@ -520,7 +521,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
     if (platform === "web" && (section === "features" || section === "pricing")) {
       const columns = 3;
       const cardGap = 24;
-      const innerPadding = 32;
+      const innerPadding = sectionInset;
       const availableWidth = Math.max(width - innerPadding * 2, 320);
       const cardWidth = Math.max(
         (availableWidth - cardGap * (columns - 1)) / columns,

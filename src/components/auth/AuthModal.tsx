@@ -49,6 +49,9 @@ export default function AuthModal({
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<"google" | "github" | null>(
+    null
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -100,6 +103,7 @@ export default function AuthModal({
       setShowRegisterPassword(false);
       setShowRegisterConfirm(false);
       setShowLoginPassword(false);
+      setOauthProvider(null);
       setErrors([]);
     }, 200);
   };
@@ -234,6 +238,30 @@ export default function AuthModal({
     }
   };
 
+  const handleOAuthLogin = async (provider: "google" | "github") => {
+    try {
+      setErrors([]);
+      setOauthProvider(provider);
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) {
+        setErrors([error.message || "OAuth login failed."]);
+        setOauthProvider(null);
+      }
+    } catch {
+      setErrors(["OAuth login failed."]);
+      setOauthProvider(null);
+    }
+  };
+
+  const oauthDisabled =
+    Boolean(oauthProvider) || isRegistering || isLoggingIn || isRecovering;
+
   return (
     <AnimatePresence>
       {open && mounted ? (
@@ -307,6 +335,37 @@ export default function AuthModal({
               >
                 <div className="w-1/3 px-6 py-6">
                   <div className="space-y-4">
+                    <div className="space-y-3">
+                      <Button
+                        type="button"
+                        onClick={() => handleOAuthLogin("google")}
+                        disabled={oauthDisabled}
+                        variant="unstyled"
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-gray-600">
+                          G
+                        </span>
+                        {oauthProvider === "google" ? "Connecting..." : "Continue with Google"}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => handleOAuthLogin("github")}
+                        disabled={oauthDisabled}
+                        variant="unstyled"
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-[10px] font-bold text-white">
+                          GH
+                        </span>
+                        {oauthProvider === "github" ? "Connecting..." : "Continue with GitHub"}
+                      </Button>
+                      <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-300">
+                        <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+                        OR
+                        <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+                      </div>
+                    </div>
                     <div>
                       <label className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
                         Full name
@@ -421,6 +480,37 @@ export default function AuthModal({
 
             <div className="w-1/3 px-6 py-6">
               <div className="space-y-4">
+                <div className="space-y-3">
+                  <Button
+                    type="button"
+                    onClick={() => handleOAuthLogin("google")}
+                    disabled={oauthDisabled}
+                    variant="unstyled"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-gray-600">
+                      G
+                    </span>
+                    {oauthProvider === "google" ? "Connecting..." : "Continue with Google"}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleOAuthLogin("github")}
+                    disabled={oauthDisabled}
+                    variant="unstyled"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-[10px] font-bold text-white">
+                      GH
+                    </span>
+                    {oauthProvider === "github" ? "Connecting..." : "Continue with GitHub"}
+                  </Button>
+                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-300">
+                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+                    OR
+                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+                  </div>
+                </div>
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
                     Email
