@@ -21,6 +21,36 @@ type AuthView = "register" | "login" | "recover";
 
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+const GoogleIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+    <path
+      fill="#EA4335"
+      d="M12 10.2v3.9h5.45c-.24 1.4-1.6 4.1-5.45 4.1-3.28 0-5.96-2.7-5.96-6s2.68-6 5.96-6c1.86 0 3.12.78 3.84 1.46l2.62-2.52C16.7 3.48 14.57 2.5 12 2.5 6.88 2.5 2.7 6.66 2.7 11.8s4.18 9.3 9.3 9.3c5.36 0 8.9-3.77 8.9-9.1 0-.61-.07-1.07-.15-1.55H12z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M3.5 7.1l3.22 2.36C7.5 7.7 9.56 6.2 12 6.2c1.86 0 3.12.78 3.84 1.46l2.62-2.52C16.7 3.48 14.57 2.5 12 2.5 8.2 2.5 4.95 4.65 3.5 7.1z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 21.1c3.62 0 6.66-1.2 8.88-3.26l-2.89-2.24c-.77.54-2.2 1.4-5.99 1.4-2.98 0-5.5-1.98-6.4-4.7l-3.3 2.55c1.45 3.52 4.9 6.25 9.7 6.25z"
+    />
+    <path
+      fill="#4285F4"
+      d="M20.75 10.7h-1.5v-.08H12v3.9h5.45c-.52 1.52-2 2.5-3.45 2.9l2.89 2.24c1.68-1.56 2.86-3.86 2.86-6.7 0-.61-.07-1.07-.15-1.55z"
+    />
+  </svg>
+);
+
+const GithubIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+    <path
+      fill="currentColor"
+      d="M12 2.5c-5.24 0-9.5 4.26-9.5 9.5 0 4.2 2.73 7.77 6.5 9.03.48.1.66-.2.66-.46 0-.23-.01-.83-.01-1.63-2.64.57-3.2-1.27-3.2-1.27-.43-1.1-1.06-1.4-1.06-1.4-.86-.6.07-.59.07-.59.95.07 1.45.98 1.45.98.85 1.46 2.24 1.04 2.78.8.09-.62.33-1.04.6-1.28-2.11-.24-4.33-1.05-4.33-4.68 0-1.03.37-1.88.98-2.54-.1-.24-.43-1.2.09-2.5 0 0 .8-.26 2.62.97a9.1 9.1 0 0 1 4.78 0c1.82-1.23 2.62-.97 2.62-.97.52 1.3.19 2.26.1 2.5.6.66.97 1.5.97 2.54 0 3.64-2.23 4.44-4.35 4.67.34.29.64.87.64 1.76 0 1.27-.01 2.3-.01 2.62 0 .26.18.56.67.46A9.5 9.5 0 0 0 21.5 12c0-5.24-4.26-9.5-9.5-9.5z"
+    />
+  </svg>
+);
+
 export default function AuthModal({
   open,
   onClose,
@@ -322,7 +352,7 @@ export default function AuthModal({
               </button>
             </div>
 
-            <div className="relative w-full max-h-[560px] overflow-y-auto scrollbar-none">
+            <div className="auth-modal-scroll relative w-full max-h-[560px] overflow-y-auto">
               <div
                 className="flex w-[300%] transition-transform duration-300 ease-in-out"
                 style={{
@@ -344,8 +374,8 @@ export default function AuthModal({
                         variant="unstyled"
                         className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
                       >
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-gray-600">
-                          G
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm">
+                          <GoogleIcon />
                         </span>
                         {oauthProvider === "google" ? "Connecting..." : "Continue with Google"}
                       </Button>
@@ -356,8 +386,8 @@ export default function AuthModal({
                         variant="unstyled"
                         className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
                       >
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-[10px] font-bold text-white">
-                          GH
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm">
+                          <GithubIcon />
                         </span>
                         {oauthProvider === "github" ? "Connecting..." : "Continue with GitHub"}
                       </Button>
@@ -489,8 +519,8 @@ export default function AuthModal({
                     variant="unstyled"
                     className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
                   >
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-gray-600">
-                      G
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm">
+                      <GoogleIcon />
                     </span>
                     {oauthProvider === "google" ? "Connecting..." : "Continue with Google"}
                   </Button>
@@ -501,8 +531,8 @@ export default function AuthModal({
                     variant="unstyled"
                     className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200"
                   >
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-[10px] font-bold text-white">
-                      GH
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm">
+                      <GithubIcon />
                     </span>
                     {oauthProvider === "github" ? "Connecting..." : "Continue with GitHub"}
                   </Button>
@@ -648,6 +678,15 @@ export default function AuthModal({
           </div>
         ) : null}
           </motion.div>
+          <style jsx>{`
+            .auth-modal-scroll {
+              scrollbar-width: none;
+              -ms-overflow-style: none;
+            }
+            .auth-modal-scroll::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
         </motion.div>
       ) : null}
     </AnimatePresence>

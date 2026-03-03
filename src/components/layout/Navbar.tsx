@@ -453,22 +453,23 @@ export default function Navbar() {
             </p>
           </DialogHeader>
           <div className="mt-4 flex justify-end gap-3">
-            <Button
+            <button
               type="button"
-              variant="outline"
               onClick={() => setLogoutConfirmOpen(false)}
+              className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:text-gray-300"
             >
               Cancel
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
               onClick={async () => {
                 setLogoutConfirmOpen(false);
                 await handleLogout();
               }}
+              className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
             >
               Logout
-            </Button>
+            </button>
           </div>
         </DialogContent>
       </Dialog>
