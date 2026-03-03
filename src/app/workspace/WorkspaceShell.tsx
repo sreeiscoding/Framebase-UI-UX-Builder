@@ -61,6 +61,8 @@ export default function WorkspaceShell({
     openExport,
     undo,
     redo,
+    canUndo,
+    canRedo,
     openPlatformLock,
   } = useWorkspace();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -654,15 +656,25 @@ export default function WorkspaceShell({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="hidden h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 md:inline-flex"
+                className={`hidden h-10 w-10 items-center justify-center rounded-full border shadow-sm transition md:inline-flex ${
+                  canUndo
+                    ? "border-gray-200 bg-white text-gray-500 hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400"
+                    : "cursor-not-allowed border-gray-200/70 bg-gray-50 text-gray-300 dark:border-gray-800/60 dark:bg-gray-900/40 dark:text-gray-600"
+                }`}
                 onClick={undo}
+                disabled={!canUndo}
               >
                 <FontAwesomeIcon icon={faRotateLeft} className="text-sm" />
               </button>
               <button
                 type="button"
-                className="hidden h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 md:inline-flex"
+                className={`hidden h-10 w-10 items-center justify-center rounded-full border shadow-sm transition md:inline-flex ${
+                  canRedo
+                    ? "border-gray-200 bg-white text-gray-500 hover:border-indigo-200 hover:text-indigo-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400"
+                    : "cursor-not-allowed border-gray-200/70 bg-gray-50 text-gray-300 dark:border-gray-800/60 dark:bg-gray-900/40 dark:text-gray-600"
+                }`}
                 onClick={redo}
+                disabled={!canRedo}
               >
                 <FontAwesomeIcon icon={faRotateRight} className="text-sm" />
               </button>

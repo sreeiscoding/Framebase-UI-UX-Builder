@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import JSZip from "jszip";
+import { jsPDF } from "jspdf";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faXmark,
@@ -64,7 +65,7 @@ const PURPOSE_MAP: Record<string, string> = {
 
 type ExportMode = "full" | "selected";
 type ExportStep = "mode" | "project" | "pages" | "format" | "confirm";
-type ExportType = "html-css" | "combined" | "zip" | "pptx" | "pdf";
+type ExportType = "html-css" | "combined" | "zip" | "pptx" | "pdf" | "jpg";
 
 type ExportToast = { message: string; visible: boolean } | null;
 
@@ -93,15 +94,21 @@ const EXPORT_TYPES: Array<{
     supported: true,
   },
   {
-    id: "pptx",
-    label: "PPTX",
-    description: "Export slides as a presentation.",
-    supported: false,
+    id: "jpg",
+    label: "JPG images",
+    description: "Export pages as high-quality JPG images.",
+    supported: true,
   },
   {
     id: "pdf",
-    label: "PDF",
-    description: "Export pages as a PDF document.",
+    label: "PDF document",
+    description: "Export all selected pages as a single PDF.",
+    supported: true,
+  },
+  {
+    id: "pptx",
+    label: "PPTX",
+    description: "Export slides as a presentation.",
     supported: false,
   },
 ];
@@ -249,6 +256,7 @@ export default function WorkspaceModals() {
   const exportProject = exportProjectId
     ? exportProjects.find((project) => project.id === exportProjectId)
     : null;
+  const exportPlatform = exportProject?.platform ?? state.platform;
   const exportProjectPages = exportProjectId
     ? state.pages.filter((page) => page.projectId === exportProjectId)
     : [];
@@ -523,6 +531,60 @@ export default function WorkspaceModals() {
     window.setTimeout(() => URL.revokeObjectURL(url), 200);
   };
 
+  const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality?: number) =>
+    new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Unable to export image."));
+        },
+        type,
+        quality
+      );
+    });
+
+  const renderPageToCanvas = (page: WorkspacePageData, platform: Platform) => {
+    const frameWidth = getFrameWidth(platform);
+    const pageHeight = getPageHeight(page, platform);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(frameWidth);
+    canvas.height = Math.round(pageHeight);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return canvas;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const elements = page.elements.filter(
+      (el) => !el.isGhost && el.type !== "background"
+    );
+    const map = new Map(elements.map((el) => [el.id, el]));
+    elements.forEach((element) => {
+      const rect = getAbsoluteRect(element, map);
+      const isText = ["text", "heading", "paragraph", "button", "input"].includes(
+        element.type
+      );
+      ctx.fillStyle = isText
+        ? "rgba(79, 70, 229, 0.18)"
+        : element.style?.backgroundColor || "rgba(148, 163, 184, 0.2)";
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+      ctx.lineWidth = 1;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    });
+
+    return canvas;
+  };
+
+  const buildImageZip = async (items: Array<{ name: string; blob: Blob }>, fileName: string) => {
+    const zip = new JSZip();
+    items.forEach((item) => {
+      zip.file(item.name, item.blob);
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    downloadBlob(blob, fileName);
+  };
+
   const buildZip = async (params: {
     pages: Array<{ name: string; html: string; combined: string }>;
     css?: string;
@@ -546,6 +608,37 @@ export default function WorkspaceModals() {
       zip.file(file, combined ? page.combined : page.html);
     });
     const blob = await zip.generateAsync({ type: "blob" });
+    downloadBlob(blob, fileName);
+  };
+
+  const exportPagesToPdf = async (
+    pages: WorkspacePageData[],
+    platform: Platform,
+    fileName: string
+  ) => {
+    if (!pages.length) return;
+    const firstCanvas = renderPageToCanvas(pages[0], platform);
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "px",
+      format: [firstCanvas.width, firstCanvas.height],
+    });
+
+    const addCanvas = (canvas: HTMLCanvasElement, isFirst: boolean) => {
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+      if (!isFirst) {
+        pdf.addPage([canvas.width, canvas.height], "portrait");
+      }
+      pdf.addImage(dataUrl, "JPEG", 0, 0, canvas.width, canvas.height);
+    };
+
+    addCanvas(firstCanvas, true);
+    for (let i = 1; i < pages.length; i += 1) {
+      const canvas = renderPageToCanvas(pages[i], platform);
+      addCanvas(canvas, false);
+    }
+
+    const blob = pdf.output("blob");
     downloadBlob(blob, fileName);
   };
 
@@ -604,60 +697,86 @@ export default function WorkspaceModals() {
     const projectId = exportProjectId;
     if (!projectId) return;
     const projectName = exportProject?.name?.trim() || "Untitled Project";
-    const generated = generateProjectCode(projectId);
-    const pages =
-      exportMode === "selected"
-        ? generated.pages.filter((page) => exportPageIds.has(page.id))
-        : generated.pages;
-    if (!pages.length) return;
     const sourcePages =
       exportMode === "selected"
         ? exportProjectPages.filter((page) => exportPageIds.has(page.id))
         : exportProjectPages;
-    const hasAssets = sourcePages.some((page) =>
-      page.elements.some((el) => el.type === "image" && !el.isGhost && el.type !== "background")
-    );
+    if (!sourcePages.length) return;
     const baseName = toFileName(projectName, "Project");
     const suffix = exportMode === "full" ? "Full_Project" : "Selected_Pages";
     setExportBusy(true);
     try {
-      if (exportType === "combined") {
-        if (pages.length === 1) {
-          const fileName = `${baseName}_${suffix}.html`;
-          downloadBlob(new Blob([pages[0].combined], { type: "text/html" }), fileName);
+      if (exportType === "jpg") {
+        if (sourcePages.length === 1) {
+          const canvas = renderPageToCanvas(sourcePages[0], exportPlatform);
+          const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
+          const fileName = `${baseName}_${suffix}.jpg`;
+          downloadBlob(blob, fileName);
         } else {
-          const fileName = `${baseName}_${suffix}_Combined.zip`;
+          const items: Array<{ name: string; blob: Blob }> = [];
+          for (let i = 0; i < sourcePages.length; i += 1) {
+            const page = sourcePages[i];
+            const canvas = renderPageToCanvas(page, exportPlatform);
+            const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
+            const fileName = `${toFileName(page.name, `page_${i + 1}`)}.jpg`;
+            items.push({ name: fileName, blob });
+          }
+          const zipName = `${baseName}_${suffix}_JPG.zip`;
+          await buildImageZip(items, zipName);
+        }
+      } else if (exportType === "pdf") {
+        const fileName = `${baseName}_${suffix}.pdf`;
+        await exportPagesToPdf(sourcePages, exportPlatform, fileName);
+      } else {
+        const generated = generateProjectCode(projectId);
+        const pages =
+          exportMode === "selected"
+            ? generated.pages.filter((page) => exportPageIds.has(page.id))
+            : generated.pages;
+        if (!pages.length) return;
+        const hasAssets = sourcePages.some((page) =>
+          page.elements.some(
+            (el) => el.type === "image" && !el.isGhost && el.type !== "background"
+          )
+        );
+        if (exportType === "combined") {
+          if (pages.length === 1) {
+            const fileName = `${baseName}_${suffix}.html`;
+            downloadBlob(new Blob([pages[0].combined], { type: "text/html" }), fileName);
+          } else {
+            const fileName = `${baseName}_${suffix}_Combined.zip`;
+            await buildZip({
+              pages,
+              combined: true,
+              includeCss: false,
+              includeIndex: exportMode === "full",
+              fileName,
+              includeAssets: hasAssets,
+            });
+          }
+        } else if (exportType === "html-css") {
+          const fileName = `${baseName}_${suffix}_HTML_CSS.zip`;
           await buildZip({
             pages,
-            combined: true,
-            includeCss: false,
+            css: generated.css,
+            combined: false,
+            includeCss: true,
+            includeIndex: exportMode === "full",
+            fileName,
+            includeAssets: hasAssets,
+          });
+        } else if (exportType === "zip") {
+          const fileName = `${baseName}_${suffix}.zip`;
+          await buildZip({
+            pages,
+            css: generated.css,
+            combined: false,
+            includeCss: true,
             includeIndex: exportMode === "full",
             fileName,
             includeAssets: hasAssets,
           });
         }
-      } else if (exportType === "html-css") {
-        const fileName = `${baseName}_${suffix}_HTML_CSS.zip`;
-        await buildZip({
-          pages,
-          css: generated.css,
-          combined: false,
-          includeCss: true,
-          includeIndex: exportMode === "full",
-          fileName,
-          includeAssets: hasAssets,
-        });
-      } else if (exportType === "zip") {
-        const fileName = `${baseName}_${suffix}.zip`;
-        await buildZip({
-          pages,
-          css: generated.css,
-          combined: false,
-          includeCss: true,
-          includeIndex: exportMode === "full",
-          fileName,
-          includeAssets: hasAssets,
-        });
       }
       showExportToast(
         exportMode === "full"
@@ -797,14 +916,14 @@ export default function WorkspaceModals() {
                           : "border-gray-200 bg-white hover:border-indigo-200 dark:border-gray-800 dark:bg-gray-950"
                       }`}
                     >
-                      <PageThumbnail page={firstPage} platform={state.platform} />
+                      <PageThumbnail page={firstPage} platform={exportPlatform} />
                       <div className="flex flex-1 flex-col justify-between">
                         <div>
                           <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                             {project.name || "Untitled Project"}
                           </h4>
                           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Platform: {state.platform === "mobile" ? "Mobile" : "Web"}
+                            Platform: {exportPlatform === "mobile" ? "Mobile" : "Web"}
                           </p>
                         </div>
                         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
@@ -886,7 +1005,7 @@ export default function WorkspaceModals() {
                         <div className="absolute right-3 top-3 flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white text-[10px] font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
                           {isSelected ? "✓" : ""}
                         </div>
-                        <PageThumbnail page={page} platform={state.platform} />
+                        <PageThumbnail page={page} platform={exportPlatform} />
                         <p className="mt-3 text-xs font-semibold text-gray-700 dark:text-gray-300">
                           {page.name || "Untitled Page"}
                         </p>
@@ -1013,7 +1132,7 @@ export default function WorkspaceModals() {
 
               {exportMode === "full" ? (
                 <div className="flex flex-wrap items-center gap-6 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 dark:border-gray-800 dark:bg-gray-900/40">
-                  <PageThumbnail page={exportPreviewPage} platform={state.platform} />
+                  <PageThumbnail page={exportPreviewPage} platform={exportPlatform} />
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                       Project
@@ -1038,7 +1157,7 @@ export default function WorkspaceModals() {
                         key={page.id}
                         className="rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950"
                       >
-                        <PageThumbnail page={page} platform={state.platform} />
+                        <PageThumbnail page={page} platform={exportPlatform} />
                         <p className="mt-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
                           {page.name || "Untitled Page"}
                         </p>

@@ -316,6 +316,11 @@ const normalizeAiSections = (value: unknown): ElementType[] => {
 const getProjectPages = (state: WorkspaceState, projectId: string) =>
   state.pages.filter((page) => page.projectId === projectId);
 
+const getProjectPlatform = (state: WorkspaceState, projectId: string | null) => {
+  if (!projectId) return state.platform;
+  return state.projects.find((project) => project.id === projectId)?.platform ?? state.platform;
+};
+
 const normalizeLabel = (value: string | null | undefined, fallback: string) => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : fallback;
@@ -755,7 +760,8 @@ const buildCaseStudySlides = (params: {
 export const generateMvpPrompt = (state: WorkspaceState, projectId: string) => {
   const project = state.projects.find((item) => item.id === projectId);
   const pages = getProjectPages(state, projectId);
-  const platformLabel = state.platform === "mobile" ? "Mobile" : "Web";
+  const platform = getProjectPlatform(state, projectId);
+  const platformLabel = platform === "mobile" ? "Mobile" : "Web";
   const projectName = normalizeLabel(project?.name, "Untitled Project");
   const pageNames = pages.map((page, index) => normalizeLabel(page.name, `Page ${index + 1}`));
   const totalPages = pages.length;
@@ -805,7 +811,7 @@ export const generateMvpPrompt = (state: WorkspaceState, projectId: string) => {
   const interactionSentence = `Interaction behavior includes ${joinNaturalList(interactionParts)}.`;
 
   const layoutRules =
-    state.platform === "mobile"
+    platform === "mobile"
       ? "Global layout rules specify a mobile-first structure with vertically stacked content, full-width sections, centered page containers, and touch-friendly spacing."
       : "Global layout rules specify responsive web containers with centered page widths, adaptive grids, and consistent alignment across breakpoints.";
   const stylingRules =
@@ -818,7 +824,8 @@ export const generateProjectAnalysis = (state: WorkspaceState, projectId: string
   const project = state.projects.find((item) => item.id === projectId);
   const pages = getProjectPages(state, projectId);
   const projectName = normalizeLabel(project?.name, "Untitled Project");
-  const platformLabel = state.platform === "mobile" ? "Mobile" : "Web";
+  const platform = getProjectPlatform(state, projectId);
+  const platformLabel = platform === "mobile" ? "Mobile" : "Web";
   const pageText = pages.map((page) => page.name).join(" ").toLowerCase();
   const combinedText = [
     projectName,
@@ -891,7 +898,8 @@ export const generateProjectCode = (state: WorkspaceState, projectId: string) =>
   const pages = getProjectPages(state, projectId);
   const projectName = normalizeLabel(project?.name, "Untitled Project");
   const projectClass = slugifyClassName(projectName, "project");
-  const platformLabel = state.platform === "mobile" ? "Mobile" : "Web";
+  const platform = getProjectPlatform(state, projectId);
+  const platformLabel = platform === "mobile" ? "Mobile" : "Web";
 
   const pageSections = pages.map((page, index) => {
     const pageName = normalizeLabel(page.name, `Page ${index + 1}`);
@@ -931,7 +939,7 @@ export const generateProjectCode = (state: WorkspaceState, projectId: string) =>
     };
   });
 
-  const maxWidth = state.platform === "mobile" ? "428px" : "1200px";
+  const maxWidth = platform === "mobile" ? "428px" : "1200px";
   const css = [
     `* {`,
     `  box-sizing: border-box;`,
@@ -1077,7 +1085,7 @@ export const generateProjectCode = (state: WorkspaceState, projectId: string) =>
     `  gap: var(--space-3);`,
     `}`,
     ``,
-    state.platform === "web"
+    platform === "web"
       ? `@media (max-width: 900px) {\n  .project { padding: 28px 18px; }\n  .page { padding: 24px; }\n}`
       : `@media (max-width: 480px) {\n  .project { padding: 24px 16px; }\n  .page { padding: 20px; }\n}`,
   ].join("\n");
@@ -1344,7 +1352,11 @@ interface WorkspaceContextValue {
   duplicatePage: (id: string) => void;
   deletePage: (id: string) => void;
   setActivePage: (id: string) => void;
-  updatePage: (id: string, changes: Partial<WorkspacePageData>) => void;
+  updatePage: (
+    id: string,
+    changes: Partial<WorkspacePageData>,
+    commitChange?: boolean
+  ) => void;
   updatePrompt: (prompt: string) => void;
   runPrompt: (prompt: string) => void;
   updateElement: (id: string, changes: Partial<CanvasElement>, commit?: boolean) => void;
@@ -1352,6 +1364,8 @@ interface WorkspaceContextValue {
   removeElement: (id: string) => void;
   undo: () => void;
   redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   openExport: () => void;
   closeExport: () => void;
   openKnowYourDesign: () => void;
@@ -1444,16 +1458,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
-          const pages: WorkspacePageData[] = [];
-          for (const project of projects) {
-            const pagesRes = await apiFetch<{ pages: ApiPage[] }>(
-              `/api/projects/${project.id}/pages`
-            );
-            if (pagesRes.success) {
-              const projectPages = pagesRes.data.pages ?? [];
-              projectPages.forEach((page, index) => {
-                pages.push(buildPageFromRecord(page, index));
-              });
+          const pagesByProject = await Promise.all(
+            projects.map(async (project) => {
+              const pagesRes = await apiFetch<{ pages: ApiPage[] }>(
+                `/api/projects/${project.id}/pages`
+              );
+              if (!pagesRes.success) return [] as WorkspacePageData[];
+              let projectPages = pagesRes.data.pages ?? [];
               if (!projectPages.length) {
                 const createPageRes = await apiFetch<{ page: ApiPage }>(
                   `/api/projects/${project.id}/pages`,
@@ -1463,11 +1474,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                   }
                 );
                 if (createPageRes.success) {
-                  pages.push(buildPageFromRecord(createPageRes.data.page, 0));
+                  projectPages = [createPageRes.data.page];
                 }
               }
-            }
-          }
+              return projectPages.map((page, index) => buildPageFromRecord(page, index));
+            })
+          );
+          const pages = pagesByProject.flat();
 
           const mappedProjects: ProjectFolder[] = projects.map((project) => ({
             id: project.id,
@@ -1614,6 +1627,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [history.present, hydrated, syncEnabled]);
 
   const state = history.present;
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
 
   const syncProject = async (projectId: string, payload: { name?: string; platform_type?: string | null }) => {
     if (!syncEnabled) return;
@@ -1623,6 +1638,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const getPageHtmlForSync = (page: WorkspacePageData) => {
+    if (!page.projectId) return null;
+    const scopedState: WorkspaceState = {
+      ...state,
+      pages: state.pages.filter(
+        (item) => item.projectId === page.projectId && item.id === page.id
+      ),
+    };
+    const generated = generateProjectCode(scopedState, page.projectId);
+    const match = generated.pages.find((item) => item.id === page.id);
+    return match?.html ?? null;
+  };
+
   const syncPage = (page: WorkspacePageData) => {
     if (!syncEnabled) return;
     const existing = pageSyncTimersRef.current.get(page.id);
@@ -1630,21 +1658,24 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       window.clearTimeout(existing);
     }
     const timer = window.setTimeout(async () => {
-      let htmlContent: string | null = null;
-      if (page.projectId) {
-        const generated = generateProjectCode(state, page.projectId);
-        const match = generated.pages.find((item) => item.id === page.id);
-        htmlContent = match?.html ?? null;
+      const send = async () => {
+        const htmlContent = getPageHtmlForSync(page);
+        await apiFetch(`/api/pages/${page.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: page.name,
+            metadata: serializePageMetadata(page),
+            html_content: htmlContent,
+          }),
+        });
+        pageSyncTimersRef.current.delete(page.id);
+      };
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number })
+          .requestIdleCallback(send, { timeout: 1200 });
+      } else {
+        await send();
       }
-      await apiFetch(`/api/pages/${page.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: page.name,
-          metadata: serializePageMetadata(page),
-          html_content: htmlContent,
-        }),
-      });
-      pageSyncTimersRef.current.delete(page.id);
     }, 400);
     pageSyncTimersRef.current.set(page.id, timer);
   };
@@ -1976,11 +2007,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const updatePage = (id: string, changes: Partial<WorkspacePageData>) => {
+  const updatePage = (
+    id: string,
+    changes: Partial<WorkspacePageData>,
+    commitChange = true
+  ) => {
     const pages = state.pages.map((page) =>
       page.id === id ? { ...page, ...changes } : page
     );
-    commit({ ...state, pages });
+    const next = { ...state, pages };
+    commitChange ? commit(next) : setPresent(next);
     const updated = pages.find((page) => page.id === id);
     if (updated) {
       syncPage(updated);
@@ -2012,11 +2048,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }));
 
     const start = performance.now();
+    const projectPlatform = getProjectPlatform(
+      state,
+      state.activeProjectId ?? activePage.projectId ?? null
+    );
 
     try {
       let generated: GeneratedLayout | null = null;
       const context = [
-        `Platform: ${state.platform === "mobile" ? "Mobile" : "Web"}`,
+        `Platform: ${projectPlatform === "mobile" ? "Mobile" : "Web"}`,
         `Page: ${activePage.name}`,
       ].join("\n");
 
@@ -2033,7 +2073,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           const output = result.data.output ?? {};
           const sections = normalizeAiSections(output.sections);
           if (sections.length) {
-            const base = generateLayoutFromSections(sections, state.platform, prompt);
+            const base = generateLayoutFromSections(sections, projectPlatform, prompt);
             generated = {
               ...base,
               explanation:
@@ -2054,7 +2094,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!generated) {
-        generated = generateLayoutFromPrompt(prompt, state.platform);
+        generated = generateLayoutFromPrompt(prompt, projectPlatform);
       }
 
       const pages = state.pages.map((page) => {
@@ -2195,7 +2235,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setUi((prev) => ({ ...prev, caseStudyGenerating: true }));
     const project = state.projects.find((item) => item.id === projectId);
     const projectName = normalizeLabel(project?.name, "Untitled Project");
-    const platformLabel = state.platform === "mobile" ? "Mobile" : "Web";
+    const platform = getProjectPlatform(state, projectId);
+    const platformLabel = platform === "mobile" ? "Mobile" : "Web";
     const pageNames = pages.map((page, index) => normalizeLabel(page.name, `Page ${index + 1}`));
     const allElements = pages.flatMap((page) =>
       page.elements.filter((el) => !el.isGhost && el.type !== "background")
@@ -2525,6 +2566,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     removeElement,
     undo: () => dispatch({ type: "UNDO" }),
     redo: () => dispatch({ type: "REDO" }),
+    canUndo,
+    canRedo,
     openExport: () => setUi((prev) => ({ ...prev, exportOpen: true })),
     closeExport: () => setUi((prev) => ({ ...prev, exportOpen: false })),
     openKnowYourDesign: () => {
@@ -2588,7 +2631,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setUi((prev) => ({ ...prev, platformLockOpen: false })),
     setError: (message: string | null) =>
       setUi((prev) => ({ ...prev, errorMessage: message })),
-  }), [state, view, ui, setPlatform, setViewMode, addProject, renameProject, setActiveProject, deleteProject, setZoom, updateZoom, setSelectedElement, addPage, renamePage, duplicatePage, deletePage, setActivePage, updatePage, updatePrompt, runPrompt, updateElement, addElement, removeElement, generateMvpPrompt, generateProjectAnalysis, generateProjectCode, generateCaseStudyPpt, downloadCaseStudyPpt, closeCaseStudyPreview]);
+  }), [state, view, ui, canUndo, canRedo, setPlatform, setViewMode, addProject, renameProject, setActiveProject, deleteProject, setZoom, updateZoom, setSelectedElement, addPage, renamePage, duplicatePage, deletePage, setActivePage, updatePage, updatePrompt, runPrompt, updateElement, addElement, removeElement, generateMvpPrompt, generateProjectAnalysis, generateProjectCode, generateCaseStudyPpt, downloadCaseStudyPpt, closeCaseStudyPreview]);
 
   if (!hydrated) {
     return <LoadingScreen message="Loading your workspace..." />;

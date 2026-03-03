@@ -262,6 +262,111 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
 
     elements.push(element);
 
+    if (platform === "web" && section === "hero") {
+      const heroHeight = Math.max(height, 340);
+      element.height = heroHeight;
+      const innerPadding = 32;
+      const columnGap = 32;
+      const leftWidth = Math.max(Math.round((width - columnGap) * 0.55), 360);
+      const rightWidth = Math.max(width - columnGap - leftWidth, 260);
+      const contentTop = innerPadding;
+      const textColor = textColorMap.default;
+
+      elements.push(
+        {
+          id: createId(),
+          type: "heading",
+          label: "Hero Heading",
+          parentId: element.id,
+          x: innerPadding,
+          y: contentTop,
+          width: leftWidth,
+          height: 72,
+          content: "Hero headline",
+          padding: 0,
+          align: "left",
+          background: "surface",
+          color: "default",
+          style: {
+            backgroundColor: "transparent",
+            color: textColor,
+            textAlign: "left",
+            fontSize: 28,
+            fontWeight: "600",
+            zIndex: 2,
+          },
+        },
+        {
+          id: createId(),
+          type: "paragraph",
+          label: "Hero Copy",
+          parentId: element.id,
+          x: innerPadding,
+          y: contentTop + 84,
+          width: leftWidth,
+          height: 96,
+          content: "Short supporting paragraph for the hero section.",
+          padding: 0,
+          align: "left",
+          background: "surface",
+          color: "muted",
+          style: {
+            backgroundColor: "transparent",
+            color: textColorMap.muted,
+            textAlign: "left",
+            fontSize: 16,
+            fontWeight: "400",
+            zIndex: 2,
+          },
+        },
+        {
+          id: createId(),
+          type: "button",
+          label: "Primary CTA",
+          parentId: element.id,
+          x: innerPadding,
+          y: contentTop + 196,
+          width: 180,
+          height: 48,
+          content: "Get started",
+          padding: 12,
+          align: "center",
+          background: "accent",
+          color: "default",
+          style: {
+            backgroundColor: "#4f46e5",
+            color: "#ffffff",
+            textAlign: "center",
+            borderRadius: 999,
+            fontSize: 14,
+            fontWeight: "600",
+            zIndex: 2,
+          },
+        },
+        {
+          id: createId(),
+          type: "image",
+          label: "Hero Visual",
+          parentId: element.id,
+          x: innerPadding + leftWidth + columnGap,
+          y: innerPadding,
+          width: rightWidth,
+          height: heroHeight - innerPadding * 2,
+          content: "Hero visual",
+          padding: 0,
+          align: "center",
+          background: "muted",
+          color: "default",
+          style: {
+            backgroundColor: "#e2e8f0",
+            textAlign: "center",
+            borderRadius: 20,
+            zIndex: 2,
+          },
+        }
+      );
+    }
+
     if (platform === "web" && (section === "features" || section === "pricing")) {
       const columns = 3;
       const cardGap = 24;

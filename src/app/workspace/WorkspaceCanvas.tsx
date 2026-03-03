@@ -159,6 +159,10 @@ export default function WorkspaceCanvas() {
         : [],
     [state.pages, state.activeProjectId]
   );
+  const activeProject = useMemo(
+    () => state.projects.find((project) => project.id === state.activeProjectId),
+    [state.projects, state.activeProjectId]
+  );
   const visiblePages = useMemo(
     () =>
       state.activeProjectId
@@ -172,8 +176,9 @@ export default function WorkspaceCanvas() {
   const promptValue = activePage?.prompt ?? "";
   const canRun = promptValue.trim().length > 0 && !ui.isGenerating;
 
-  const frameWidth = state.platform === "web" ? 1200 : 428;
-  const minFrameHeight = state.platform === "web" ? 640 : 720;
+  const platformForCanvas = activeProject?.platform ?? state.platform;
+  const frameWidth = platformForCanvas === "web" ? 1200 : 428;
+  const minFrameHeight = platformForCanvas === "web" ? 640 : 720;
 
   const elements = activePage?.elements ?? [];
   const elementMap = useMemo(() => {
@@ -236,7 +241,7 @@ export default function WorkspaceCanvas() {
       updatePage(pageId, {
         canvasX: center.x - width / 2,
         canvasY: center.y - height / 2,
-      });
+      }, false);
       centeredPageIdsRef.current.add(pageId);
     },
     [getViewportCenter, state.pages, frameWidth, getPageHeight, updatePage]
@@ -378,7 +383,7 @@ export default function WorkspaceCanvas() {
     const centeredY = (height - INFINITE_CANVAS_SIZE * scale) / 2;
     setPan({ x: centeredX, y: centeredY });
     initialPanSetRef.current = true;
-  }, [containerWidth, containerHeight, scale, state.platform]);
+  }, [containerWidth, containerHeight, scale, platformForCanvas]);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -560,7 +565,7 @@ export default function WorkspaceCanvas() {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [interaction, scale, frameWidth, frameHeight, updateElement, state.platform, scheduleRender]);
+  }, [interaction, scale, frameWidth, frameHeight, updateElement, platformForCanvas, scheduleRender]);
 
   const startDrag = (
     event: React.PointerEvent<HTMLDivElement>,
@@ -824,14 +829,16 @@ export default function WorkspaceCanvas() {
       const newPageY = pageDragOrigin.pageY + dy / scale;
       
       manualPageIdsRef.current.add(draggingPageId);
-      // Update page position optimistically (no history commit yet)
-      updatePage(draggingPageId, {
-        canvasX: newPageX,
-        canvasY: newPageY,
-      });
+      pageDraftRef.current = { id: draggingPageId, x: newPageX, y: newPageY };
+      scheduleRender();
     };
 
     const handleUp = () => {
+      const draft = pageDraftRef.current;
+      if (draft && draft.id === draggingPageId) {
+        updatePage(draggingPageId, { canvasX: draft.x, canvasY: draft.y });
+      }
+      pageDraftRef.current = null;
       setDraggingPageId(null);
     };
 
@@ -841,9 +848,9 @@ export default function WorkspaceCanvas() {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [draggingPageId, pageDragOrigin, scale, updatePage]);
+  }, [draggingPageId, pageDragOrigin, scale, scheduleRender, updatePage]);
 
-  const frameLabel = state.platform === "web" ? "Web Frame" : "Mobile Frame";
+  const frameLabel = platformForCanvas === "web" ? "Web Frame" : "Mobile Frame";
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -857,10 +864,10 @@ export default function WorkspaceCanvas() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
             <FontAwesomeIcon
-              icon={state.platform === "web" ? faLaptop : faMobileScreen}
+              icon={platformForCanvas === "web" ? faLaptop : faMobileScreen}
               className="text-[10px]"
             />
-            {state.platform === "web" ? "1200px" : "428px"} frame
+            {platformForCanvas === "web" ? "1200px" : "428px"} frame
           </div>
         </div>
       </div>
@@ -967,8 +974,11 @@ export default function WorkspaceCanvas() {
               : null;
 
             // Ensure canvasX and canvasY are valid numbers for old saved state
-            const canvasX = typeof page.canvasX === "number" ? page.canvasX : 2000 + index * 60;
-            const canvasY = typeof page.canvasY === "number" ? page.canvasY : 2000 + index * 60;
+            const pageDraft = pageDraftRef.current;
+            const baseCanvasX = typeof page.canvasX === "number" ? page.canvasX : 2000 + index * 60;
+            const baseCanvasY = typeof page.canvasY === "number" ? page.canvasY : 2000 + index * 60;
+            const canvasX = pageDraft?.id === page.id ? pageDraft.x : baseCanvasX;
+            const canvasY = pageDraft?.id === page.id ? pageDraft.y : baseCanvasY;
 
             return (
               <div
@@ -1043,7 +1053,7 @@ export default function WorkspaceCanvas() {
                 {/* Page Frame */}
                 <div
                   className={`relative h-full w-full overflow-hidden rounded-3xl border bg-white shadow-sm transition dark:bg-gray-950 ${
-                    state.platform === "mobile" ? "rounded-[36px]" : "rounded-3xl"
+                    platformForCanvas === "mobile" ? "rounded-[36px]" : "rounded-3xl"
                   } ${
                     isActive
                       ? "border-indigo-200 shadow-md dark:border-indigo-500/30"
@@ -1057,7 +1067,7 @@ export default function WorkspaceCanvas() {
                   }}
                 >
                   {/* Mobile notch indicator */}
-                  {state.platform === "mobile" ? (
+                  {platformForCanvas === "mobile" ? (
                     <div className="pointer-events-none absolute left-1/2 top-3 h-2 w-24 -translate-x-1/2 rounded-full bg-gray-200 dark:bg-gray-800" />
                   ) : null}
 
