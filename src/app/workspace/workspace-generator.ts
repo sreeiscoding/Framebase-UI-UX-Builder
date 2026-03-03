@@ -253,7 +253,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
         backgroundColor: bgColorMap[preset.background || "surface"] || "#ffffff",
         textAlign: preset.align || "left",
         color: textColorMap[preset.color || "default"] || "#1f2937",
-        borderRadius: 12,
+        borderRadius: platform === "web" ? 24 : 16,
         fontSize: 14,
         fontWeight: "400",
         zIndex: 1,
@@ -262,27 +262,149 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
 
     elements.push(element);
 
+    if (platform === "web" && section === "navbar") {
+      const barHeight = 72;
+      element.height = barHeight;
+      element.style.backgroundColor = "#ffffff";
+      element.style.boxShadow = "0 12px 30px rgba(15, 23, 42, 0.08)";
+
+      const logoX = 24;
+      const logoY = 20;
+      elements.push({
+        id: createId(),
+        type: "text",
+        label: "Logo",
+        parentId: element.id,
+        x: logoX,
+        y: logoY,
+        width: 140,
+        height: 28,
+        content: "Brand",
+        padding: 0,
+        align: "left",
+        background: "surface",
+        color: "default",
+        style: {
+          backgroundColor: "transparent",
+          color: textColorMap.default,
+          textAlign: "left",
+          fontSize: 16,
+          fontWeight: "600",
+          zIndex: 2,
+        },
+      });
+
+      const navLabels = ["Product", "Solutions", "Pricing"];
+      const navGap = 28;
+      const navWidth = 80;
+      const totalNavWidth = navLabels.length * navWidth + navGap * (navLabels.length - 1);
+      const leftLimit = logoX + 140 + 24;
+      const rightLimit = width - 120 - 24;
+      const availableWidth = Math.max(rightLimit - leftLimit, 0);
+      const navStartX = leftLimit + Math.max(0, Math.round((availableWidth - totalNavWidth) / 2));
+      navLabels.forEach((label, index) => {
+        elements.push({
+          id: createId(),
+          type: "text",
+          label: "Nav Link",
+          parentId: element.id,
+          x: navStartX + index * (navWidth + navGap),
+          y: 24,
+          width: navWidth,
+          height: 20,
+          content: label,
+          padding: 0,
+          align: "left",
+          background: "surface",
+          color: "muted",
+          style: {
+            backgroundColor: "transparent",
+            color: textColorMap.muted,
+            textAlign: "left",
+            fontSize: 13,
+            fontWeight: "500",
+            zIndex: 2,
+          },
+        });
+      });
+
+      elements.push({
+        id: createId(),
+        type: "button",
+        label: "Nav CTA",
+        parentId: element.id,
+        x: width - 24 - 120,
+        y: 18,
+        width: 120,
+        height: 36,
+        content: "Book a demo",
+        padding: 10,
+        align: "center",
+        background: "accent",
+        color: "default",
+        style: {
+          backgroundColor: "#111827",
+          color: "#ffffff",
+          textAlign: "center",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: "600",
+          zIndex: 2,
+        },
+      });
+    }
+
     if (platform === "web" && section === "hero") {
-      const heroHeight = Math.max(height, 340);
+      const heroHeight = Math.max(height, 460);
       element.height = heroHeight;
+      element.style.backgroundGradient =
+        "linear-gradient(135deg, rgba(224,231,255,0.9) 0%, rgba(239,246,255,0.9) 40%, rgba(253,242,248,0.9) 100%)";
+      element.style.boxShadow = "0 20px 40px rgba(15, 23, 42, 0.08)";
       const innerPadding = 32;
       const columnGap = 32;
-      const leftWidth = Math.max(Math.round((width - columnGap) * 0.55), 360);
-      const rightWidth = Math.max(width - columnGap - leftWidth, 260);
+      const innerWidth = Math.max(width - innerPadding * 2, 320);
+      const leftWidth = Math.max(Math.round((innerWidth - columnGap) * 0.56), 360);
+      const rightWidth = Math.max(innerWidth - columnGap - leftWidth, 260);
       const contentTop = innerPadding;
       const textColor = textColorMap.default;
 
       elements.push(
         {
           id: createId(),
+          type: "text",
+          label: "Hero Badge",
+          parentId: element.id,
+          x: innerPadding,
+          y: contentTop,
+          width: 200,
+          height: 24,
+          content: "Backed by Y Combinator",
+          padding: 0,
+          align: "left",
+          background: "surface",
+          color: "muted",
+          style: {
+            backgroundColor: "rgba(255,255,255,0.7)",
+            color: textColorMap.muted,
+            textAlign: "left",
+            fontSize: 12,
+            fontWeight: "600",
+            borderRadius: 999,
+            paddingLeft: 12,
+            paddingRight: 12,
+            zIndex: 2,
+          },
+        },
+        {
+          id: createId(),
           type: "heading",
           label: "Hero Heading",
           parentId: element.id,
           x: innerPadding,
-          y: contentTop,
+          y: contentTop + 36,
           width: leftWidth,
-          height: 72,
-          content: "Hero headline",
+          height: 96,
+          content: "Surface hidden customer pains, effortlessly",
           padding: 0,
           align: "left",
           background: "surface",
@@ -291,8 +413,8 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
             backgroundColor: "transparent",
             color: textColor,
             textAlign: "left",
-            fontSize: 28,
-            fontWeight: "600",
+            fontSize: 30,
+            fontWeight: "700",
             zIndex: 2,
           },
         },
@@ -302,10 +424,10 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
           label: "Hero Copy",
           parentId: element.id,
           x: innerPadding,
-          y: contentTop + 84,
+          y: contentTop + 140,
           width: leftWidth,
           height: 96,
-          content: "Short supporting paragraph for the hero section.",
+          content: "Centralize feedback, quantify pain points, and reveal customer experience across the journey.",
           padding: 0,
           align: "left",
           background: "surface",
@@ -314,7 +436,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
             backgroundColor: "transparent",
             color: textColorMap.muted,
             textAlign: "left",
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: "400",
             zIndex: 2,
           },
@@ -325,10 +447,10 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
           label: "Primary CTA",
           parentId: element.id,
           x: innerPadding,
-          y: contentTop + 196,
+          y: contentTop + 250,
           width: 180,
           height: 48,
-          content: "Get started",
+          content: "Book a demo",
           padding: 12,
           align: "center",
           background: "accent",
@@ -345,22 +467,50 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
         },
         {
           id: createId(),
+          type: "button",
+          label: "Secondary CTA",
+          parentId: element.id,
+          x: innerPadding + 200,
+          y: contentTop + 250,
+          width: 160,
+          height: 48,
+          content: "Watch video",
+          padding: 12,
+          align: "center",
+          background: "surface",
+          color: "default",
+          style: {
+            backgroundColor: "#ffffff",
+            color: "#111827",
+            textAlign: "center",
+            borderRadius: 999,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: "#e5e7eb",
+            fontSize: 14,
+            fontWeight: "600",
+            zIndex: 2,
+          },
+        },
+        {
+          id: createId(),
           type: "image",
           label: "Hero Visual",
           parentId: element.id,
           x: innerPadding + leftWidth + columnGap,
-          y: innerPadding,
+          y: innerPadding + 20,
           width: rightWidth,
-          height: heroHeight - innerPadding * 2,
+          height: heroHeight - innerPadding * 2 - 20,
           content: "Hero visual",
           padding: 0,
           align: "center",
           background: "muted",
           color: "default",
           style: {
-            backgroundColor: "#e2e8f0",
+            backgroundColor: "#f8fafc",
             textAlign: "center",
-            borderRadius: 20,
+            borderRadius: 24,
+            boxShadow: "0 18px 30px rgba(15, 23, 42, 0.12)",
             zIndex: 2,
           },
         }
@@ -370,16 +520,22 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
     if (platform === "web" && (section === "features" || section === "pricing")) {
       const columns = 3;
       const cardGap = 24;
-      const cardWidth = Math.max((width - cardGap * (columns - 1)) / columns, 180);
+      const innerPadding = 32;
+      const availableWidth = Math.max(width - innerPadding * 2, 320);
+      const cardWidth = Math.max(
+        (availableWidth - cardGap * (columns - 1)) / columns,
+        180
+      );
       const cardHeight = section === "pricing" ? 180 : 160;
-      const cardY = cursorY + 72;
+      const cardY = innerPadding + 64;
       const cardPreset = ELEMENT_PRESETS.card;
       for (let i = 0; i < columns; i += 1) {
         elements.push({
           id: createId(),
           type: "card",
           label: section === "pricing" ? "Pricing Card" : "Feature Card",
-          x: horizontalPadding + i * (cardWidth + cardGap),
+          parentId: element.id,
+          x: innerPadding + i * (cardWidth + cardGap),
           y: cardY,
           width: cardWidth,
           height: cardHeight,
@@ -403,7 +559,7 @@ const buildElementsFromSections = (sections: ElementType[], platform: Platform) 
           },
         });
       }
-      height = Math.max(height, cardHeight + 120);
+      height = Math.max(height, cardHeight + innerPadding * 2 + 64);
       element.height = height;
     }
 
