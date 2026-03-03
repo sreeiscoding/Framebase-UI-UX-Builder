@@ -21,6 +21,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import ThemeToggle from "@/components/ThemeToggle";
 import { getSupabaseClient } from "@/lib/supabase-client";
+import { readProfileCache, writeProfileCache } from "@/lib/profile-cache";
 
 const MAX_AVATAR_MB = 2;
 const getStoragePathFromPublicUrl = (url: string) => {
@@ -280,6 +281,36 @@ export default function WorkspaceModals() {
       if (error || !data.user) {
         throw new Error("Unable to load your session.");
       }
+      const cached = readProfileCache(data.user.id);
+      if (cached) {
+        const metadata = (data.user.user_metadata || {}) as Record<string, string>;
+        const cachedProfile = {
+          fullName:
+            cached.full_name ??
+            metadata.full_name ??
+            metadata.fullName ??
+            metadata.name ??
+            "",
+          username:
+            cached.username ??
+            metadata.username ??
+            metadata.user_name ??
+            "",
+          email:
+            data.user.email ?? cached.email ?? metadata.email ?? "",
+          avatarUrl:
+            cached.avatar_url ??
+            metadata.avatar_url ??
+            metadata.avatarUrl ??
+            "",
+          platformPreference: cached.platform_preference ?? "",
+        };
+        setSettingsProfile(cachedProfile);
+        setSettingsInitial(cachedProfile);
+        setSettingsAvatarPreview(cachedProfile.avatarUrl || "");
+        setSettingsAvatarFile(null);
+        setSettingsLoading(false);
+      }
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -322,6 +353,13 @@ export default function WorkspaceModals() {
       setSettingsInitial(next);
       setSettingsAvatarPreview(resolvedAvatar);
       setSettingsAvatarFile(null);
+      writeProfileCache(data.user.id, {
+        full_name: profile?.full_name ?? null,
+        username: profile?.username ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        email: profile?.email ?? data.user.email ?? null,
+        platform_preference: profile?.platform_preference ?? null,
+      });
     };
     loadProfile()
       .catch((error) => {

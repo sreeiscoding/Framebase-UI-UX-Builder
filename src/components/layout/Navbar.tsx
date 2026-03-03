@@ -9,6 +9,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import ProfileModal from "@/components/profile/ProfileModal";
 import { navLinks, pricingPlans } from "@/lib/constants";
 import { getSupabaseClient } from "@/lib/supabase-client";
+import { readProfileCache, writeProfileCache } from "@/lib/profile-cache";
 import type { User } from "@supabase/supabase-js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ToastProvider";
@@ -38,6 +39,7 @@ export default function Navbar() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [billingGateOpen, setBillingGateOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("Free Trial");
   const profileRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
@@ -59,6 +61,21 @@ export default function Navbar() {
 
   const loadProfile = async (user: User) => {
     try {
+      const cached = readProfileCache(user.id);
+      if (cached) {
+        const cachedName =
+          cached.full_name?.trim() ||
+          cached.username?.trim() ||
+          user.email ||
+          "Account";
+        setDisplayName(cachedName);
+        const cachedAvatar = cached.avatar_url || "";
+        const resolvedCached = await resolveAvatarUrl(cachedAvatar);
+        setAvatarUrl(resolvedCached || "");
+        setPlanType(cached.plan_type ?? null);
+        setPlanStatus(cached.plan_status ?? null);
+        setPlanExpiresAt(cached.plan_expires_at ?? cached.trial_ends_at ?? null);
+      }
       const { data } = await supabase
         .from("profiles")
         .select("*")
@@ -83,6 +100,17 @@ export default function Navbar() {
       setPlanType(data?.plan_type ?? null);
       setPlanStatus(data?.plan_status ?? null);
       setPlanExpiresAt(data?.plan_expires_at ?? data?.trial_ends_at ?? null);
+      writeProfileCache(user.id, {
+        full_name: data?.full_name ?? null,
+        username: data?.username ?? null,
+        avatar_url: data?.avatar_url ?? null,
+        email: data?.email ?? user.email ?? null,
+        platform_preference: data?.platform_preference ?? null,
+        plan_type: data?.plan_type ?? null,
+        plan_status: data?.plan_status ?? null,
+        plan_expires_at: data?.plan_expires_at ?? null,
+        trial_ends_at: data?.trial_ends_at ?? null,
+      });
 
       if (!expiredToastRef.current) {
         const expiredStatus =
@@ -117,6 +145,12 @@ export default function Navbar() {
       setPlanStatus(null);
       setPlanExpiresAt(null);
     }
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    await supabase.auth.signOut();
+    router.push("/");
   };
 
   useEffect(() => {
@@ -284,9 +318,7 @@ export default function Navbar() {
                     type="button"
                     onClick={async () => {
                       setProfileMenuOpen(false);
-                      await fetch("/api/auth/logout", { method: "POST" });
-                      await supabase.auth.signOut();
-                      router.push("/");
+                      setLogoutConfirmOpen(true);
                     }}
                     className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
                   >
@@ -367,9 +399,7 @@ export default function Navbar() {
                 className="btn-primary w-full"
                 onClick={async () => {
                   setMenuOpen(false);
-                  await fetch("/api/auth/logout", { method: "POST" });
-                  await supabase.auth.signOut();
-                  router.push("/");
+                  setLogoutConfirmOpen(true);
                 }}
               >
                 Logout
@@ -413,6 +443,35 @@ export default function Navbar() {
           }
         }}
       />
+
+      <Dialog open={logoutConfirmOpen} onOpenChange={(open) => setLogoutConfirmOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              You will be signed out of your account.
+            </p>
+          </DialogHeader>
+          <div className="mt-4 flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLogoutConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                setLogoutConfirmOpen(false);
+                await handleLogout();
+              }}
+            >
+              Logout
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={billingGateOpen} onOpenChange={(open) => setBillingGateOpen(open)}>
         <DialogContent className="max-w-xl">

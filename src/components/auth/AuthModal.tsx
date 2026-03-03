@@ -285,7 +285,7 @@ export default function AuthModal({
             transition={{ duration: 0.2 }}
           />
           <motion.div
-            className={`relative w-full max-w-2xl overflow-hidden rounded-3xl border border-gray-200 bg-white/95 shadow-[0_30px_80px_-50px_rgba(15,23,42,0.6)] ring-1 ring-black/5 transition-all duration-300 dark:border-gray-800 dark:bg-gray-950/95 dark:ring-white/5 ${
+            className={`relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-[0_25px_70px_-45px_rgba(15,23,42,0.65)] ring-1 ring-black/5 transition-all duration-300 dark:border-gray-800 dark:bg-gray-950 dark:ring-white/5 ${
               visible ? "scale-100 opacity-100" : "scale-95 opacity-0"
             }`}
             initial={{ scale: 0.96, opacity: 0 }}
@@ -293,9 +293,10 @@ export default function AuthModal({
             exit={{ scale: 0.96, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-gray-50/80 px-6 py-5 dark:border-gray-800 dark:bg-gray-900/40">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
+            <div className="relative flex items-start justify-between gap-4 border-b border-gray-200 bg-gradient-to-br from-indigo-50/80 via-white to-white px-6 py-5 dark:border-gray-800 dark:from-indigo-500/10 dark:via-gray-950 dark:to-gray-950">
+              <div className="absolute left-0 top-0 h-full w-1 bg-indigo-500/80" />
+              <div className="pl-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-500/80">
                   Framebase Access
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
@@ -321,7 +322,7 @@ export default function AuthModal({
               </button>
             </div>
 
-            <div className="relative w-full overflow-hidden">
+            <div className="relative w-full max-h-[560px] overflow-y-auto scrollbar-none">
               <div
                 className="flex w-[300%] transition-transform duration-300 ease-in-out"
                 style={{
@@ -460,7 +461,7 @@ export default function AuthModal({
                       onClick={handleRegister}
                       disabled={isRegistering}
                       variant="unstyled"
-                      className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                      className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_25px_-12px_rgba(79,70,229,0.7)] transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
                     >
                       {isRegistering ? "Creating..." : "Create Account"}
                     </Button>
@@ -567,7 +568,7 @@ export default function AuthModal({
                   onClick={handleLogin}
                   disabled={isLoggingIn}
                   variant="unstyled"
-                  className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                  className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_25px_-12px_rgba(79,70,229,0.7)] transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
                 >
                   {isLoggingIn ? "Logging in..." : "Login"}
                 </Button>
@@ -611,7 +612,7 @@ export default function AuthModal({
                   onClick={handleRecover}
                   disabled={isRecovering}
                   variant="unstyled"
-                  className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                  className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_25px_-12px_rgba(79,70,229,0.7)] transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
                 >
                   {isRecovering ? "Sending..." : "Send Reset Link"}
                 </Button>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ToastProvider";
 import { getSupabaseClient } from "@/lib/supabase-client";
+import { readProfileCache, writeProfileCache } from "@/lib/profile-cache";
 
 type ProfileModalProps = {
   open: boolean;
@@ -80,6 +81,40 @@ export default function ProfileModal({
       if (error || !data.user) {
         throw new Error("Unable to load your session.");
       }
+      const cached = readProfileCache(data.user.id);
+      if (cached) {
+        const metadata = (data.user.user_metadata || {}) as Record<string, string>;
+        const cachedFullName =
+          cached.full_name ??
+          metadata.full_name ??
+          metadata.fullName ??
+          metadata.name ??
+          "";
+        const cachedUsername =
+          cached.username ??
+          metadata.username ??
+          metadata.user_name ??
+          "";
+        const cachedAvatar =
+          cached.avatar_url ??
+          metadata.avatar_url ??
+          metadata.avatarUrl ??
+          "";
+        const cachedEmail =
+          data.user.email ?? cached.email ?? metadata.email ?? "";
+        setFullName(cachedFullName);
+        setUsername(cachedUsername);
+        setAvatarUrl(cachedAvatar || "");
+        setEmail(cachedEmail);
+        setPlatformPreference(cached.platform_preference ?? "");
+        setInitial({
+          fullName: cachedFullName,
+          username: cachedUsername,
+          avatarUrl: cachedAvatar || "",
+          email: cachedEmail,
+        });
+        setLoading(false);
+      }
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -125,6 +160,13 @@ export default function ProfileModal({
         avatarUrl: nextAvatarUrl,
         email: nextEmail,
       });
+      writeProfileCache(data.user.id, {
+        full_name: profile?.full_name ?? null,
+        username: profile?.username ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        email: profile?.email ?? data.user.email ?? null,
+        platform_preference: profile?.platform_preference ?? null,
+      });
     };
     loadProfile()
       .catch((error) => {
@@ -138,7 +180,7 @@ export default function ProfileModal({
     return () => {
       active = false;
     };
-  }, [avatarFile]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -153,7 +195,7 @@ export default function ProfileModal({
     const previewUrl = URL.createObjectURL(avatarFile);
     setAvatarPreview(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
-  }, [open]);
+  }, [avatarFile]);
 
   const passwordErrors = useMemo(() => {
     const issues: string[] = [];
